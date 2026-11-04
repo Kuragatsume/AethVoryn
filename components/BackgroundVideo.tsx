@@ -32,26 +32,11 @@ export default function BackgroundVideo() {
       ? solidBgColor
       : theme.background || "#05070a";
 
-  const containerStyle: React.CSSProperties = frameMargins.enabled
-    ? {
-        position: "fixed",
-        top: `${frameMargins.top}px`,
-        right: `${frameMargins.right}px`,
-        bottom: `${frameMargins.bottom}px`,
-        left: `${frameMargins.left}px`,
-        backgroundColor: effectiveBgColor,
-      }
-    : {
-        position: "fixed",
-        inset: 0,
-        backgroundColor: effectiveBgColor,
-      };
-
   return (
     <div
       aria-hidden
-      className="pointer-events-none -z-10 overflow-hidden transition-[top,right,bottom,left,background-color] duration-150"
-      style={containerStyle}
+      className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      style={{ backgroundColor: effectiveBgColor }}
     >
       {/* Subtle architectural grid when in color backdrop mode */}
       {backdropMode === "color" && (
@@ -107,6 +92,60 @@ export default function BackgroundVideo() {
               "linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 40%, rgba(0,0,0,0.7) 100%)",
           }}
         />
+      )}
+
+      {/* EDGE FRAME MARGINS OVERLAY (LIES DIRECTLY ON TOP OF BACKGROUND WITHOUT SQUEEZING LAYOUT) */}
+      {frameMargins.enabled && (
+        <div className="pointer-events-none absolute inset-0 z-10 select-none">
+          {/* Top Bar */}
+          {frameMargins.top > 0 && (
+            <div
+              className="absolute inset-x-0 top-0"
+              style={{
+                height: `${frameMargins.top}px`,
+                backgroundColor: frameMargins.color,
+                borderBottom: "1px solid rgba(255,255,255,0.12)",
+              }}
+            />
+          )}
+          {/* Bottom Bar */}
+          {frameMargins.bottom > 0 && (
+            <div
+              className="absolute inset-x-0 bottom-0"
+              style={{
+                height: `${frameMargins.bottom}px`,
+                backgroundColor: frameMargins.color,
+                borderTop: "1px solid rgba(255,255,255,0.12)",
+              }}
+            />
+          )}
+          {/* Left Bar */}
+          {frameMargins.left > 0 && (
+            <div
+              className="absolute left-0"
+              style={{
+                width: `${frameMargins.left}px`,
+                top: `${frameMargins.top}px`,
+                bottom: `${frameMargins.bottom}px`,
+                backgroundColor: frameMargins.color,
+                borderRight: "1px solid rgba(255,255,255,0.12)",
+              }}
+            />
+          )}
+          {/* Right Bar */}
+          {frameMargins.right > 0 && (
+            <div
+              className="absolute right-0"
+              style={{
+                width: `${frameMargins.right}px`,
+                top: `${frameMargins.top}px`,
+                bottom: `${frameMargins.bottom}px`,
+                backgroundColor: frameMargins.color,
+                borderLeft: "1px solid rgba(255,255,255,0.12)",
+              }}
+            />
+          )}
+        </div>
       )}
     </div>
   );

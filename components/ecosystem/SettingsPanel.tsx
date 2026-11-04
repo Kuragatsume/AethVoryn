@@ -296,8 +296,8 @@ export default function SettingsPanel() {
                 </div>
                 <input
                   type="range"
-                  min={420}
-                  max={1500}
+                  min={360}
+                  max={1920}
                   step={10}
                   value={windowSize.width}
                   onChange={(e) => updateWindowSize({ width: Number(e.target.value) })}
@@ -313,8 +313,8 @@ export default function SettingsPanel() {
                 </div>
                 <input
                   type="range"
-                  min={320}
-                  max={900}
+                  min={260}
+                  max={1080}
                   step={10}
                   value={windowSize.height}
                   onChange={(e) => updateWindowSize({ height: Number(e.target.value) })}
@@ -477,7 +477,7 @@ export default function SettingsPanel() {
           </div>
 
           <p className="font-mono text-[11px] leading-relaxed opacity-65">
-            Позволяет добавить рамки по периметру экрана, полностью исключающие отображение фонового видео или подложки. Каждая сторона настраивается независимо.
+            Поля накладываются поверх фона по краям экрана, просто перекрывая часть подложки и не сжимая основной макет и окна. Каждая сторона настраивается отдельно.
           </p>
 
           {/* Color & Presets for Edge Fields */}

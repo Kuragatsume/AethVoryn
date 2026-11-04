@@ -58,6 +58,66 @@ export const DEFAULT_WINDOW_DIMENSIONS: WindowDimensions = {
   isMaximized: false,
 };
 
+export type WindowKind = "builtin" | "site";
+
+export type DesktopWindowState = {
+  id: string; // "news" | "notes" | "settings" | "site-..."
+  kind: WindowKind;
+  code: string; // "01", "02", "03", "04"...
+  title: string;
+  url?: string;
+  useProxy?: boolean;
+  isOpen: boolean;
+  isMaximized: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex: number;
+};
+
+export const INITIAL_WINDOWS: DesktopWindowState[] = [
+  {
+    id: "news",
+    kind: "builtin",
+    code: "01",
+    title: "Новости",
+    isOpen: true,
+    isMaximized: false,
+    x: 160,
+    y: 72,
+    width: 960,
+    height: 640,
+    zIndex: 12,
+  },
+  {
+    id: "notes",
+    kind: "builtin",
+    code: "02",
+    title: "Блокнот",
+    isOpen: false,
+    isMaximized: false,
+    x: 200,
+    y: 96,
+    width: 1020,
+    height: 650,
+    zIndex: 11,
+  },
+  {
+    id: "settings",
+    kind: "builtin",
+    code: "03",
+    title: "Настройки",
+    isOpen: false,
+    isMaximized: false,
+    x: 240,
+    y: 84,
+    width: 940,
+    height: 660,
+    zIndex: 10,
+  },
+];
+
 export type FrameMargins = {
   enabled: boolean;
   top: number; // 0..180 px
@@ -323,9 +383,47 @@ export function hexToRgbTriplet(hex: string, fallback = "203, 213, 225"): string
   return `${r}, ${g}, ${b}`;
 }
 
+export function normalizeWebsiteUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return "https://example.com";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+export function extractSiteLabel(url: string, customTitle?: string): string {
+  if (customTitle && customTitle.trim()) return customTitle.trim();
+  try {
+    const u = new URL(normalizeWebsiteUrl(url));
+    const host = u.hostname.replace(/^www\./i, "");
+    const parts = host.split(".");
+    if (parts.length >= 2) {
+      const main = parts[0];
+      return main.charAt(0).toUpperCase() + main.slice(1);
+    }
+    return host;
+  } catch {
+    return url.slice(0, 18) || "Сайт";
+  }
+}
+
 type EcosystemContextValue = {
   activePage: EcosystemPage;
   setActivePage: (p: EcosystemPage) => void;
+  // Multi-window Desktop API
+  windows: DesktopWindowState[];
+  activeWindowId: string | null;
+  toggleWindow: (id: string) => void;
+  openWindow: (id: string) => void;
+  closeWindow: (id: string) => void;
+  closeAllWindows: () => void;
+  focusWindow: (id: string) => void;
+  updateWindow: (id: string, patch: Partial<DesktopWindowState>) => void;
+  resetWindowPositionAndSize: (id: string) => void;
+  addSiteWindow: (url: string, title?: string) => string;
+  removeSiteWindow: (id: string) => void;
+  isAnyWindowDragging: boolean;
+  setIsAnyWindowDragging: (v: boolean) => void;
+  // Appearance & Backdrop
   surfaceMode: SurfaceMode;
   setSurfaceMode: (m: SurfaceMode) => void;
   backdropMode: BackdropMode;
@@ -378,11 +476,14 @@ type EcosystemContextValue = {
 
 const EcosystemContext = createContext<EcosystemContextValue | null>(null);
 
-const STORAGE_KEY = "aethvoryn_ecosystem_v5";
+const STORAGE_KEY = "aethvoryn_ecosystem_v6";
+const LEGACY_STORAGE_KEY = "aethvoryn_ecosystem_v5";
 const STRICT_THEME_VERSION = 5;
 
 export function EcosystemProvider({ children }: { children: ReactNode }) {
-  const [activePage, setActivePage] = useState<EcosystemPage>("news");
+  const [windows, setWindows] = useState<DesktopWindowState[]>(INITIAL_WINDOWS);
+  const [isAnyWindowDragging, setIsAnyWindowDragging] = useState(false);
+
   const [surfaceMode, setSurfaceMode] = useState<SurfaceMode>("transparent");
   const [backdropMode, setBackdropMode] = useState<BackdropMode>("video");
   const [solidBgColor, setSolidBgColorState] = useState<string>("#05070A");
@@ -424,6 +525,49 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
   );
   const theme = activeThemeItem.colors;
 
+  // Determine the currently active (top-most open) window
+  const activeWindowId = useMemo(() => {
+    const openWins = windows.filter((w) => w.isOpen);
+    if (openWins.length === 0) return null;
+    return openWins.reduce((top, curr) =>
+      curr.zIndex >= top.zIndex ? curr : top
+    ).id;
+  }, [windows]);
+
+  const activePage = useMemo<EcosystemPage>(() => {
+    if (
+      activeWindowId === "news" ||
+      activeWindowId === "notes" ||
+      activeWindowId === "settings"
+    ) {
+      return activeWindowId;
+    }
+    return null;
+  }, [activeWindowId]);
+
+  // Center initial windows nicely on first client mount if not hydrated from storage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    setWindows((prev) =>
+      prev.map((w, idx) => {
+        // Keep within screen bounds
+        const clampedW = Math.min(w.width, Math.max(420, vw - 120));
+        const clampedH = Math.min(w.height, Math.max(320, vh - 120));
+        const defaultX = Math.max(24, Math.round((vw - clampedW) / 2) - 30 + idx * 26);
+        const defaultY = Math.max(56, Math.round((vh - clampedH) / 2) - 20 + idx * 22);
+        return {
+          ...w,
+          width: clampedW,
+          height: clampedH,
+          x: Math.min(Math.max(0, w.x || defaultX), Math.max(0, vw - 200)),
+          y: Math.min(Math.max(0, w.y || defaultY), Math.max(0, vh - 120)),
+        };
+      })
+    );
+  }, []);
+
   // Sync solidBgColor with theme background if not set independently
   useEffect(() => {
     if (theme.background && solidBgColor !== theme.background) {
@@ -456,7 +600,9 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
   // Hydrate saved settings from localStorage + IndexedDB
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw =
+        localStorage.getItem(STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.surfaceMode === "solid" || parsed.surfaceMode === "transparent") {
@@ -476,6 +622,23 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
         }
         if (parsed.frameMargins && typeof parsed.frameMargins.top === "number") {
           setFrameMargins(parsed.frameMargins);
+        }
+        if (Array.isArray(parsed.windows) && parsed.windows.length > 0) {
+          // Ensure all 3 builtin windows exist plus any saved custom site windows
+          const savedMap = new Map<string, DesktopWindowState>();
+          for (const w of parsed.windows) {
+            if (w && typeof w.id === "string") {
+              savedMap.set(w.id, w);
+            }
+          }
+          const mergedBuiltins = INITIAL_WINDOWS.map((initW) => {
+            const saved = savedMap.get(initW.id);
+            return saved ? { ...initW, ...saved, kind: "builtin" as const } : initW;
+          });
+          const customSites = parsed.windows.filter(
+            (w: DesktopWindowState) => w && w.kind === "site" && w.url
+          );
+          setWindows([...mergedBuiltins, ...customSites]);
         }
 
         if (
@@ -534,36 +697,40 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     setHydrated(true);
   }, []);
 
-  // Save state to localStorage
+  // Debounced save state to localStorage (prevents main-thread lag during UI updates)
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      const serializableCustom = customVideos.map((v) =>
-        v.id.startsWith("idb-") ? { ...v, src: "idb://" + v.id } : v
-      );
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          themeVersion: STRICT_THEME_VERSION,
-          surfaceMode,
-          backdropMode,
-          solidBgColor,
-          videoQuality,
-          windowSize,
-          frameMargins,
-          themes,
-          activeThemeId,
-          etherConfig,
-          activeVideoId,
-          loopVideo,
-          bookmarkedIds,
-          notes,
-          customVideos: serializableCustom,
-        })
-      );
-    } catch {
-      /* ignore */
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        const serializableCustom = customVideos.map((v) =>
+          v.id.startsWith("idb-") ? { ...v, src: "idb://" + v.id } : v
+        );
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            themeVersion: STRICT_THEME_VERSION,
+            surfaceMode,
+            backdropMode,
+            solidBgColor,
+            videoQuality,
+            windowSize,
+            windows,
+            frameMargins,
+            themes,
+            activeThemeId,
+            etherConfig,
+            activeVideoId,
+            loopVideo,
+            bookmarkedIds,
+            notes,
+            customVideos: serializableCustom,
+          })
+        );
+      } catch {
+        /* ignore */
+      }
+    }, 280);
+    return () => window.clearTimeout(timer);
   }, [
     hydrated,
     surfaceMode,
@@ -571,6 +738,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     solidBgColor,
     videoQuality,
     windowSize,
+    windows,
     frameMargins,
     themes,
     activeThemeId,
@@ -600,6 +768,159 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--eco-glass-blur", `${theme.glassBlur}px`);
     root.style.setProperty("--eco-vignette", String(videoQuality.clearMode ? 0 : theme.vignette));
   }, [theme, surfaceMode, backdropMode, solidBgColor, videoQuality.clearMode]);
+
+  // Multi-Window Actions
+  const focusWindow = useCallback((id: string) => {
+    setWindows((prev) => {
+      const target = prev.find((w) => w.id === id);
+      if (!target) return prev;
+      const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 10);
+      if (target.zIndex === maxZ && prev.filter((w) => w.zIndex === maxZ).length === 1) {
+        return prev;
+      }
+      return prev.map((w) => (w.id === id ? { ...w, zIndex: maxZ + 1 } : w));
+    });
+  }, []);
+
+  const toggleWindow = useCallback((id: string) => {
+    setWindows((prev) => {
+      const target = prev.find((w) => w.id === id);
+      if (!target) return prev;
+      const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 10);
+      const nextOpen = !target.isOpen;
+      return prev.map((w) =>
+        w.id === id
+          ? { ...w, isOpen: nextOpen, zIndex: nextOpen ? maxZ + 1 : w.zIndex }
+          : w
+      );
+    });
+  }, []);
+
+  const openWindow = useCallback((id: string) => {
+    setWindows((prev) => {
+      const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 10);
+      return prev.map((w) =>
+        w.id === id ? { ...w, isOpen: true, zIndex: maxZ + 1 } : w
+      );
+    });
+  }, []);
+
+  const closeWindow = useCallback((id: string) => {
+    setWindows((prev) =>
+      prev.map((w) => (w.id === id ? { ...w, isOpen: false } : w))
+    );
+  }, []);
+
+  const closeAllWindows = useCallback(() => {
+    setWindows((prev) => prev.map((w) => ({ ...w, isOpen: false })));
+  }, []);
+
+  const setActivePage = useCallback(
+    (p: EcosystemPage) => {
+      if (p === null) {
+        closeAllWindows();
+      } else {
+        openWindow(p);
+      }
+    },
+    [closeAllWindows, openWindow]
+  );
+
+  const updateWindow = useCallback(
+    (id: string, patch: Partial<DesktopWindowState>) => {
+      setWindows((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, ...patch } : w))
+      );
+      if (
+        typeof patch.width === "number" ||
+        typeof patch.height === "number" ||
+        typeof patch.isMaximized === "boolean"
+      ) {
+        setWindowSize((prev) => ({
+          width: typeof patch.width === "number" ? patch.width : prev.width,
+          height: typeof patch.height === "number" ? patch.height : prev.height,
+          isMaximized:
+            typeof patch.isMaximized === "boolean"
+              ? patch.isMaximized
+              : prev.isMaximized,
+        }));
+      }
+    },
+    []
+  );
+
+  const resetWindowPositionAndSize = useCallback((id: string) => {
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 900;
+    const defaultW = 960;
+    const defaultH = 640;
+    const x = Math.max(24, Math.round((vw - defaultW) / 2));
+    const y = Math.max(56, Math.round((vh - defaultH) / 2));
+    setWindows((prev) =>
+      prev.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              isMaximized: false,
+              width: defaultW,
+              height: defaultH,
+              x,
+              y,
+            }
+          : w
+      )
+    );
+    setWindowSize({ width: defaultW, height: defaultH, isMaximized: false });
+  }, []);
+
+  const addSiteWindow = useCallback((rawUrl: string, customTitle?: string): string => {
+    const cleanUrl = normalizeWebsiteUrl(rawUrl);
+    const label = extractSiteLabel(cleanUrl, customTitle);
+    const id = `site-${Date.now()}`;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 900;
+
+    setWindows((prev) => {
+      const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 10);
+      const nextNum = prev.length + 1;
+      const code = String(nextNum).padStart(2, "0");
+      const offset = (prev.filter((w) => w.kind === "site").length * 32) % 220;
+      const w = Math.min(1040, Math.max(520, vw - 180));
+      const h = Math.min(680, Math.max(400, vh - 160));
+      const x = Math.max(30, Math.round((vw - w) / 2) - 60 + offset);
+      const y = Math.max(56, Math.round((vh - h) / 2) - 40 + offset);
+
+      const newWin: DesktopWindowState = {
+        id,
+        kind: "site",
+        code,
+        title: label,
+        url: cleanUrl,
+        useProxy: false,
+        isOpen: true,
+        isMaximized: false,
+        x,
+        y,
+        width: w,
+        height: h,
+        zIndex: maxZ + 1,
+      };
+      return [...prev, newWin];
+    });
+
+    return id;
+  }, []);
+
+  const removeSiteWindow = useCallback((id: string) => {
+    setWindows((prev) => {
+      const filtered = prev.filter((w) => w.id !== id || w.kind === "builtin");
+      // Re-index codes cleanly
+      return filtered.map((w, idx) => ({
+        ...w,
+        code: String(idx + 1).padStart(2, "0"),
+      }));
+    });
+  }, []);
 
   const selectTheme = useCallback((id: string) => {
     setActiveThemeId(id);
@@ -658,13 +979,36 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     [updateActiveThemeColors]
   );
 
-  const updateWindowSize = useCallback((patch: Partial<WindowDimensions>) => {
-    setWindowSize((prev) => ({ ...prev, ...patch }));
-  }, []);
+  const updateWindowSize = useCallback(
+    (patch: Partial<WindowDimensions>) => {
+      setWindowSize((prev) => {
+        const next = { ...prev, ...patch };
+        setWindows((wPrev) => {
+          const targetId = activeWindowId || "settings";
+          return wPrev.map((w) =>
+            w.id === targetId
+              ? {
+                  ...w,
+                  width: typeof patch.width === "number" ? patch.width : w.width,
+                  height: typeof patch.height === "number" ? patch.height : w.height,
+                  isMaximized:
+                    typeof patch.isMaximized === "boolean"
+                      ? patch.isMaximized
+                      : w.isMaximized,
+                }
+              : w
+          );
+        });
+        return next;
+      });
+    },
+    [activeWindowId]
+  );
 
   const resetWindowSize = useCallback(() => {
-    setWindowSize(DEFAULT_WINDOW_DIMENSIONS);
-  }, []);
+    const targetId = activeWindowId || "settings";
+    resetWindowPositionAndSize(targetId);
+  }, [activeWindowId, resetWindowPositionAndSize]);
 
   const updateFrameMargins = useCallback((patch: Partial<FrameMargins>) => {
     setFrameMargins((prev) => ({ ...prev, ...patch }));
@@ -816,6 +1160,19 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     () => ({
       activePage,
       setActivePage,
+      windows,
+      activeWindowId,
+      toggleWindow,
+      openWindow,
+      closeWindow,
+      closeAllWindows,
+      focusWindow,
+      updateWindow,
+      resetWindowPositionAndSize,
+      addSiteWindow,
+      removeSiteWindow,
+      isAnyWindowDragging,
+      setIsAnyWindowDragging,
       surfaceMode,
       setSurfaceMode,
       backdropMode,
@@ -867,12 +1224,31 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     }),
     [
       activePage,
+      setActivePage,
+      windows,
+      activeWindowId,
+      toggleWindow,
+      openWindow,
+      closeWindow,
+      closeAllWindows,
+      focusWindow,
+      updateWindow,
+      resetWindowPositionAndSize,
+      addSiteWindow,
+      removeSiteWindow,
+      isAnyWindowDragging,
       surfaceMode,
       backdropMode,
       solidBgColor,
+      setSolidBgColor,
       videoQuality,
+      updateVideoQuality,
       windowSize,
+      updateWindowSize,
+      resetWindowSize,
       frameMargins,
+      updateFrameMargins,
+      resetFrameMargins,
       themes,
       activeThemeId,
       theme,
