@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 title AETHVORYN Ecosystem Server
 
 if exist "%~dp0package.json" (
