@@ -78,7 +78,7 @@ export default function NewsPanel() {
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col font-sans">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
         <div className="flex items-center gap-2.5">
@@ -88,7 +88,7 @@ export default function NewsPanel() {
           <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
             Новости технологий
           </h2>
-          <span className="rounded-sm border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-xs tabular-nums opacity-80">
+          <span className="border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-xs tabular-nums opacity-80">
             {filtered.length}
           </span>
         </div>
@@ -98,7 +98,7 @@ export default function NewsPanel() {
           onClick={() => refreshNews()}
           disabled={newsLoading}
           title="Обновить ленту новостей"
-          className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs font-medium transition-colors hover:border-white/25 hover:bg-white/[0.08] disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.04] px-3 py-1.5 font-mono text-xs font-medium transition-colors hover:border-white/25 hover:bg-white/[0.08] disabled:opacity-50"
         >
           <RefreshCw
             className={`h-3.5 w-3.5 ${newsLoading ? "animate-spin" : ""}`}
@@ -110,7 +110,7 @@ export default function NewsPanel() {
 
       {/* Search & Filters */}
       <div className="mt-3 space-y-2.5">
-        <div className="glass-subtle flex items-center gap-2.5 rounded-lg px-3 py-1.5 transition-colors focus-within:border-white/25">
+        <div className="glass-subtle flex items-center gap-2.5 px-3 py-1.5 transition-colors focus-within:border-white/25">
           <Search className="h-3.5 w-3.5 shrink-0 opacity-55" />
           <input
             type="text"
@@ -118,14 +118,14 @@ export default function NewsPanel() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Поиск по заголовкам, источникам и тегам..."
             aria-label="Поиск по новостям"
-            className="min-w-0 flex-1 bg-transparent text-xs placeholder:text-slate-400/55 focus:outline-none sm:text-sm"
+            className="min-w-0 flex-1 bg-transparent font-mono text-xs placeholder:text-slate-400/55 focus:outline-none sm:text-sm"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery("")}
               aria-label="Очистить"
-              className="rounded p-1 opacity-60 hover:bg-white/10 hover:opacity-100"
+              className="p-1 opacity-60 hover:bg-white/10 hover:opacity-100"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -142,7 +142,7 @@ export default function NewsPanel() {
                   key={src}
                   type="button"
                   onClick={() => setSourceFilter(src)}
-                  className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  className={`border px-2.5 py-1 font-mono text-xs font-medium transition-colors ${
                     active
                       ? "font-semibold"
                       : "border-white/10 bg-white/[0.03] opacity-75 hover:border-white/20 hover:opacity-100"
@@ -185,7 +185,7 @@ export default function NewsPanel() {
                   key={tag}
                   type="button"
                   onClick={() => setSelectedTag(active ? null : tag)}
-                  className={`inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+                  className={`inline-flex items-center gap-1 border px-2 py-0.5 font-mono text-[10px] transition-colors ${
                     active
                       ? "border-white/30 bg-white/15"
                       : "border-white/10 bg-white/[0.02] opacity-60 hover:opacity-100"
@@ -204,15 +204,15 @@ export default function NewsPanel() {
       {/* News Feed */}
       <div className="mt-3 flex-1 space-y-2 overflow-y-auto pr-1">
         {filtered.length === 0 ? (
-          <div className="glass-subtle flex flex-col items-center justify-center rounded-lg p-10 text-center">
+          <div className="glass-subtle flex flex-col items-center justify-center p-10 text-center">
             <Newspaper className="h-6 w-6 opacity-40" />
-            <p className="mt-2.5 text-xs font-medium opacity-80">
+            <p className="mt-2.5 font-mono text-xs font-medium opacity-80">
               Публикаций по заданным критериям не найдено
             </p>
             <button
               type="button"
               onClick={resetFilters}
-              className="mt-3 rounded-md border border-white/15 bg-white/[0.06] px-3.5 py-1.5 text-xs font-medium hover:bg-white/10"
+              className="mt-3 border border-white/15 bg-white/[0.06] px-3.5 py-1.5 font-mono text-xs font-medium hover:bg-white/10"
             >
               Сбросить фильтры
             </button>
@@ -260,7 +260,7 @@ function TechNewsCard({
         <div className="flex items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className="rounded-sm px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider"
+              className="px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider"
               style={{
                 backgroundColor: "rgba(var(--eco-primary-rgb), 0.12)",
                 color: "var(--eco-primary)",
@@ -269,7 +269,7 @@ function TechNewsCard({
             >
               {item.source}
             </span>
-            <span className="rounded-sm border border-white/10 bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] opacity-75">
+            <span className="border border-white/10 bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] opacity-75">
               {item.category}
             </span>
             <span className="inline-flex items-center gap-1 font-mono text-[11px] opacity-55">
@@ -282,7 +282,7 @@ function TechNewsCard({
               type="button"
               onClick={onToggleBookmark}
               title={bookmarked ? "Убрать из закладок" : "В закладки"}
-              className="rounded p-1.5 transition-colors hover:bg-white/10"
+              className="p-1.5 transition-colors hover:bg-white/10"
               style={{
                 color: bookmarked ? "var(--eco-primary)" : undefined,
                 opacity: bookmarked ? 1 : 0.5,
@@ -295,7 +295,7 @@ function TechNewsCard({
               target="_blank"
               rel="noopener noreferrer"
               title="Открыть источник"
-              className="rounded p-1.5 opacity-60 transition-opacity hover:bg-white/10 hover:opacity-100"
+              className="p-1.5 opacity-60 transition-opacity hover:bg-white/10 hover:opacity-100"
             >
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
@@ -354,7 +354,7 @@ function TechNewsCard({
                 key={t}
                 type="button"
                 onClick={() => onSelectTag(t)}
-                className="rounded-sm border border-white/10 bg-white/[0.02] px-1.5 py-0.5 font-mono text-[10px] opacity-65 transition-opacity hover:opacity-100"
+                className="border border-white/10 bg-white/[0.02] px-1.5 py-0.5 font-mono text-[10px] opacity-65 transition-opacity hover:opacity-100"
               >
                 #{t}
               </button>

@@ -22,7 +22,7 @@
   --eco-bg: #05070A;
   --eco-bg-rgb: 5, 7, 10;
   --eco-text: #F1F5F9;
-  --eco-glass-opacity: 0.78;
+  --eco-glass-opacity: 0.85;
   --eco-glass-blur: 16px;
   --eco-vignette: 0.55;
 }
@@ -41,11 +41,11 @@ body {
 }
 
 ::selection {
-  background: rgba(var(--eco-primary-rgb), 0.25);
+  background: rgba(var(--eco-primary-rgb), 0.3);
   color: #fff;
 }
 
-/* Scrollbar */
+/* Strict Rectangular Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -54,15 +54,15 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 0px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--eco-primary-rgb), 0.5);
+  background: rgba(var(--eco-primary-rgb), 0.6);
 }
 
 @utility text-shadow-crisp {
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
 }
 
 @utility text-gradient-amber {
@@ -71,47 +71,49 @@ body {
   background-clip: text;
   color: transparent;
   text-shadow: none;
-  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.75));
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.8));
 }
 
 @utility glass {
-  background: rgba(var(--eco-surface-rgb), var(--eco-glass-opacity, 0.78));
-  backdrop-filter: blur(var(--eco-glass-blur, 16px)) saturate(110%);
-  -webkit-backdrop-filter: blur(var(--eco-glass-blur, 16px)) saturate(110%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(var(--eco-surface-rgb), var(--eco-glass-opacity, 0.85));
+  backdrop-filter: blur(var(--eco-glass-blur, 16px)) saturate(105%);
+  -webkit-backdrop-filter: blur(var(--eco-glass-blur, 16px)) saturate(105%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0px;
   box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset;
 }
 
 @utility glass-subtle {
-  background: rgba(var(--eco-surface-rgb), calc(var(--eco-glass-opacity, 0.78) * 0.72));
-  backdrop-filter: blur(calc(var(--eco-glass-blur, 16px) * 0.75)) saturate(105%);
-  -webkit-backdrop-filter: blur(calc(var(--eco-glass-blur, 16px) * 0.75)) saturate(105%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(var(--eco-surface-rgb), calc(var(--eco-glass-opacity, 0.85) * 0.75));
+  backdrop-filter: blur(calc(var(--eco-glass-blur, 16px) * 0.75)) saturate(100%);
+  -webkit-backdrop-filter: blur(calc(var(--eco-glass-blur, 16px) * 0.75)) saturate(100%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0px;
 }
 
-/* Range slider */
+/* Range slider: strictly sharp 90-degree corners */
 input[type="range"].hud-range {
   -webkit-appearance: none;
   appearance: none;
-  height: 3px;
-  border-radius: 1px;
-  background: rgba(255, 255, 255, 0.14);
+  height: 2px;
+  border-radius: 0px;
+  background: rgba(255, 255, 255, 0.16);
   outline: none;
 }
 input[type="range"].hud-range::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 11px;
-  height: 11px;
-  border-radius: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 0px;
   background: var(--eco-primary);
-  border: 1px solid rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.8);
   cursor: pointer;
 }
 input[type="range"].hud-range::-moz-range-thumb {
-  width: 11px;
-  height: 11px;
-  border: 1px solid rgba(0, 0, 0, 0.6);
-  border-radius: 2px;
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.8);
+  border-radius: 0px;
   background: var(--eco-primary);
   cursor: pointer;
 }

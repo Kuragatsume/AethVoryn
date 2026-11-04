@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  Columns2,
   Download,
   FileText,
+  Paintbrush,
   Pin,
   Plus,
   Search,
@@ -11,6 +13,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useEcosystem } from "./EcosystemContext";
+import PaintCanvas from "./PaintCanvas";
 
 export default function NotesPanel() {
   const { notes, addNote, updateNote, deleteNote } = useEcosystem();
@@ -19,6 +22,7 @@ export default function NotesPanel() {
     notes[0]?.id ?? null
   );
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"split" | "text" | "paint">("split");
 
   const filteredNotes = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -51,7 +55,7 @@ export default function NotesPanel() {
     }
   };
 
-  const handleExport = () => {
+  const handleExportText = () => {
     if (!activeNote) return;
     const blob = new Blob([`# ${activeNote.title}\n\n${activeNote.content}`], {
       type: "text/plain;charset=utf-8",
@@ -65,7 +69,7 @@ export default function NotesPanel() {
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col font-sans">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
         <div className="flex items-center gap-2.5">
@@ -73,41 +77,114 @@ export default function NotesPanel() {
             02 //
           </span>
           <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
-            Блокнот
+            Блокнот и Холст (Paint)
           </h2>
-          <span className="rounded-sm border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-xs tabular-nums opacity-80">
+          <span className="border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-xs tabular-nums opacity-80">
             {notes.length}
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCreate}
-          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/[0.08]"
-          style={{
-            backgroundColor: "rgba(var(--eco-primary-rgb), 0.14)",
-            borderColor: "var(--eco-primary)",
-            color: "var(--eco-text)",
-          }}
-        >
-          <Plus className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-          Новая запись
-        </button>
+        {/* View Mode Switcher + New Note Button */}
+        <div className="flex items-center gap-2">
+          {activeNote && (
+            <div className="flex border border-white/10 bg-black/40 p-0.5 font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => setViewMode("split")}
+                title="Сплит: Текст + Холст Paint"
+                className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${
+                  viewMode === "split"
+                    ? "font-semibold text-white"
+                    : "opacity-60 hover:opacity-100"
+                }`}
+                style={
+                  viewMode === "split"
+                    ? {
+                        backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
+                        color: "var(--eco-primary)",
+                      }
+                    : undefined
+                }
+              >
+                <Columns2 className="h-3 w-3" />
+                <span className="hidden sm:inline">Сплит</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode("text")}
+                title="Только текст"
+                className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${
+                  viewMode === "text"
+                    ? "font-semibold text-white"
+                    : "opacity-60 hover:opacity-100"
+                }`}
+                style={
+                  viewMode === "text"
+                    ? {
+                        backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
+                        color: "var(--eco-primary)",
+                      }
+                    : undefined
+                }
+              >
+                <FileText className="h-3 w-3" />
+                <span className="hidden sm:inline">Текст</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode("paint")}
+                title="Только холст для рисования"
+                className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${
+                  viewMode === "paint"
+                    ? "font-semibold text-white"
+                    : "opacity-60 hover:opacity-100"
+                }`}
+                style={
+                  viewMode === "paint"
+                    ? {
+                        backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
+                        color: "var(--eco-primary)",
+                      }
+                    : undefined
+                }
+              >
+                <Paintbrush className="h-3 w-3" />
+                <span className="hidden sm:inline">Paint</span>
+              </button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCreate}
+            className="inline-flex items-center gap-1.5 border px-3 py-1.5 font-mono text-xs font-medium transition-colors hover:bg-white/[0.08]"
+            style={{
+              backgroundColor: "rgba(var(--eco-primary-rgb), 0.16)",
+              borderColor: "var(--eco-primary)",
+              color: "var(--eco-text)",
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
+            Новая запись
+          </button>
+        </div>
       </div>
 
-      {/* Main Split View */}
-      <div className="mt-3 grid min-h-0 flex-1 gap-3.5 md:grid-cols-[240px_minmax(0,1fr)]">
-        {/* Left List */}
+      {/* Main Split View: Left List + Right Editor/Paint Area */}
+      <div className="mt-3 grid min-h-0 flex-1 gap-3.5 md:grid-cols-[220px_minmax(0,1fr)]">
+        {/* Left List of Notes */}
         <div className="flex min-h-0 flex-col gap-2">
-          <div className="glass-subtle flex items-center gap-2 rounded-lg px-3 py-1.5">
+          <div className="glass-subtle flex items-center gap-2 px-3 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 opacity-55" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Фильтр записей..."
+              placeholder="Поиск..."
               aria-label="Поиск заметок"
-              className="min-w-0 flex-1 bg-transparent text-xs placeholder:text-slate-400/55 focus:outline-none"
+              className="min-w-0 flex-1 bg-transparent font-mono text-xs placeholder:text-slate-400/55 focus:outline-none"
             />
             {search && (
               <button
@@ -128,6 +205,8 @@ export default function NotesPanel() {
             ) : (
               filteredNotes.map((n) => {
                 const isSelected = activeNote?.id === n.id;
+                const hasDrawing = Boolean(n.drawing && n.drawing.length > 50);
+
                 return (
                   <div
                     key={n.id}
@@ -140,9 +219,9 @@ export default function NotesPanel() {
                         setSelectedId(n.id);
                       }
                     }}
-                    className={`group flex cursor-pointer flex-col rounded-lg border p-2.5 transition-colors ${
+                    className={`group flex cursor-pointer flex-col border p-2.5 transition-colors ${
                       isSelected
-                        ? "bg-white/[0.07]"
+                        ? "bg-white/[0.08]"
                         : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
                     }`}
                     style={
@@ -152,9 +231,21 @@ export default function NotesPanel() {
                     }
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <p className="truncate text-xs font-semibold">
-                        {n.title || "Без названия"}
-                      </p>
+                      <div className="flex items-center gap-1.5 truncate">
+                        {hasDrawing && (
+                          <span
+                            title="Есть эскиз"
+                            className="shrink-0 text-[10px]"
+                            style={{ color: "var(--eco-primary)" }}
+                          >
+                            ✎
+                          </span>
+                        )}
+                        <p className="truncate text-xs font-semibold">
+                          {n.title || "Без названия"}
+                        </p>
+                      </div>
+
                       <div className="flex shrink-0 items-center gap-1">
                         <button
                           type="button"
@@ -163,7 +254,7 @@ export default function NotesPanel() {
                             updateNote(n.id, { pinned: !n.pinned });
                           }}
                           title={n.pinned ? "Открепить" : "Закрепить"}
-                          className={`rounded p-0.5 transition-opacity ${
+                          className={`p-0.5 transition-opacity ${
                             n.pinned
                               ? "opacity-100"
                               : "opacity-0 group-hover:opacity-60 hover:!opacity-100"
@@ -181,15 +272,17 @@ export default function NotesPanel() {
                             handleDelete(n.id);
                           }}
                           title="Удалить запись"
-                          className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:text-rose-400 hover:!opacity-100"
+                          className="p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:text-rose-400 hover:!opacity-100"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     </div>
+
                     <p className="mt-1 line-clamp-2 text-[11px] opacity-60">
-                      {n.content || "Пустая запись..."}
+                      {n.content || (hasDrawing ? "[Сохранённый эскиз]" : "Пустая запись...")}
                     </p>
+
                     <div className="mt-2 flex items-center justify-between font-mono text-[10px] opacity-50">
                       <span>#{n.tag}</span>
                       <span>{n.updatedAt}</span>
@@ -201,9 +294,10 @@ export default function NotesPanel() {
           </div>
         </div>
 
-        {/* Right Editor */}
+        {/* Right Editor + Paint Canvas Area */}
         {activeNote ? (
-          <div className="glass-subtle flex min-h-[300px] flex-col rounded-lg p-4">
+          <div className="glass-subtle flex min-h-[320px] flex-col p-3 sm:p-4">
+            {/* Note title, tag, actions */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2.5">
               <input
                 type="text"
@@ -215,6 +309,7 @@ export default function NotesPanel() {
                 aria-label="Заголовок заметки"
                 className="min-w-0 flex-1 bg-transparent text-sm font-semibold focus:outline-none sm:text-base"
               />
+
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
@@ -224,13 +319,13 @@ export default function NotesPanel() {
                   }
                   placeholder="Категория"
                   aria-label="Тег заметки"
-                  className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 font-mono text-xs focus:border-white/25 focus:outline-none"
+                  className="w-24 border border-white/10 bg-black/30 px-2 py-1 font-mono text-xs focus:border-white/25 focus:outline-none"
                 />
                 <button
                   type="button"
-                  onClick={handleExport}
-                  title="Экспорт в .txt"
-                  className="rounded-md border border-white/10 bg-white/[0.04] p-1.5 opacity-75 transition-opacity hover:opacity-100"
+                  onClick={handleExportText}
+                  title="Экспорт текста (.txt)"
+                  className="border border-white/10 bg-white/[0.04] p-1.5 opacity-75 transition-opacity hover:opacity-100"
                 >
                   <Download className="h-3.5 w-3.5" />
                 </button>
@@ -238,32 +333,92 @@ export default function NotesPanel() {
                   type="button"
                   onClick={() => handleDelete(activeNote.id)}
                   title="Удалить запись"
-                  className="rounded-md border border-white/10 bg-white/[0.04] p-1.5 opacity-75 transition-colors hover:border-rose-400/40 hover:text-rose-300 hover:opacity-100"
+                  className="border border-white/10 bg-white/[0.04] p-1.5 opacity-75 transition-colors hover:border-rose-400/40 hover:text-rose-300 hover:opacity-100"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
 
-            <textarea
-              value={activeNote.content}
-              onChange={(e) =>
-                updateNote(activeNote.id, { content: e.target.value })
-              }
-              placeholder="Текст записи..."
-              aria-label="Текст заметки"
-              className="mt-3 w-full flex-1 resize-none bg-transparent font-sans text-sm leading-relaxed focus:outline-none"
-            />
+            {/* Content Display based on viewMode (Split, Text, Paint) */}
+            <div className="mt-3 grid min-h-0 flex-1 gap-3 overflow-hidden">
+              {viewMode === "split" && (
+                <div className="grid h-full min-h-0 gap-3 md:grid-cols-2">
+                  {/* Left: Textarea */}
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider opacity-45">
+                      ТЕКСТ ЗАПИСИ //
+                    </div>
+                    <textarea
+                      value={activeNote.content}
+                      onChange={(e) =>
+                        updateNote(activeNote.id, { content: e.target.value })
+                      }
+                      placeholder="Начните писать текст заметки..."
+                      aria-label="Текст заметки"
+                      className="h-full w-full flex-1 resize-none border border-white/10 bg-black/25 p-3 font-sans text-xs leading-relaxed focus:border-white/30 focus:outline-none sm:text-sm"
+                    />
+                  </div>
 
+                  {/* Right: Paint Window */}
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="mb-1.5 flex items-center justify-between font-mono text-[10px] uppercase tracking-wider opacity-45">
+                      <span>ХОЛСТ ДЛЯ РИСОВАНИЯ (PAINT) //</span>
+                      {activeNote.drawing && <span>✓ ЭСКИЗ СОХРАНЁН</span>}
+                    </div>
+                    <div className="h-full min-h-0 flex-1">
+                      <PaintCanvas
+                        key={activeNote.id}
+                        activeNoteId={activeNote.id}
+                        initialDrawing={activeNote.drawing}
+                        onSaveDrawing={(dataUrl) =>
+                          updateNote(activeNote.id, { drawing: dataUrl })
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {viewMode === "text" && (
+                <textarea
+                  value={activeNote.content}
+                  onChange={(e) =>
+                    updateNote(activeNote.id, { content: e.target.value })
+                  }
+                  placeholder="Текст записи..."
+                  aria-label="Текст заметки"
+                  className="h-full w-full flex-1 resize-none border border-white/10 bg-black/25 p-3 font-sans text-sm leading-relaxed focus:border-white/30 focus:outline-none"
+                />
+              )}
+
+              {viewMode === "paint" && (
+                <div className="h-full min-h-0 flex-1">
+                  <PaintCanvas
+                    key={activeNote.id}
+                    activeNoteId={activeNote.id}
+                    initialDrawing={activeNote.drawing}
+                    onSaveDrawing={(dataUrl) =>
+                      updateNote(activeNote.id, { drawing: dataUrl })
+                    }
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Note Footer metadata */}
             <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 font-mono text-[10px] uppercase tracking-wider opacity-50">
               <span>Символов: {activeNote.content.length}</span>
-              <span>Изменено: {activeNote.updatedAt}</span>
+              <span>
+                {activeNote.drawing ? "[Эскиз прикреплён] • " : ""}
+                Изменено: {activeNote.updatedAt}
+              </span>
             </div>
           </div>
         ) : (
-          <div className="glass-subtle flex flex-col items-center justify-center rounded-lg p-8 text-center">
+          <div className="glass-subtle flex flex-col items-center justify-center p-8 text-center">
             <FileText className="h-7 w-7 opacity-35" />
-            <p className="mt-2 text-xs opacity-70">
+            <p className="mt-2 font-mono text-xs opacity-70">
               Выберите существующую запись или создайте новую
             </p>
           </div>

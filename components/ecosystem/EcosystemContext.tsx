@@ -17,6 +17,22 @@ export type SurfaceMode = "transparent" | "solid";
 
 export type BackdropMode = "video" | "color";
 
+export type VideoDisplayFit = "cover" | "contain" | "fill";
+
+export type VideoQualitySettings = {
+  fit: VideoDisplayFit;
+  brightness: number; // 0.6 .. 1.4
+  contrast: number; // 0.8 .. 1.4
+  clearMode: boolean; // true = 100% direct 4K without muddy vignette overlays
+};
+
+export const DEFAULT_VIDEO_QUALITY: VideoQualitySettings = {
+  fit: "cover",
+  brightness: 1.0,
+  contrast: 1.0,
+  clearMode: true,
+};
+
 export type EtherDisplayMode =
   | "clock"
   | "stats"
@@ -30,12 +46,42 @@ export type EtherConfig = {
   customSubtitle: string;
 };
 
+export type WindowDimensions = {
+  width: number;
+  height: number;
+  isMaximized: boolean;
+};
+
+export const DEFAULT_WINDOW_DIMENSIONS: WindowDimensions = {
+  width: 960,
+  height: 640,
+  isMaximized: false,
+};
+
+export type FrameMargins = {
+  enabled: boolean;
+  top: number; // 0..180 px
+  right: number; // 0..260 px
+  bottom: number; // 0..180 px
+  left: number; // 0..260 px
+  color: string; // HEX, e.g. #000000
+};
+
+export const DEFAULT_FRAME_MARGINS: FrameMargins = {
+  enabled: false,
+  top: 24,
+  right: 36,
+  bottom: 24,
+  left: 36,
+  color: "#000000",
+};
+
 export type ThemeColors = {
-  primary: string; // Основной акцент
-  secondary: string; // Вторичный акцент
-  surface: string; // Цвет панелей / меню
-  background: string; // Цвет фона
-  text: string; // Цвет текста
+  primary: string; // Основной акцент / рамки окон и уголков
+  secondary: string; // Вторичный тон / детали
+  surface: string; // Цвет поверхности окон, карточек и меню
+  background: string; // Базовый цвет фона страницы
+  text: string; // Цвет текста внутри окон
   glassOpacity: number;
   glassBlur: number;
   vignette: number;
@@ -64,6 +110,7 @@ export type NoteItem = {
   tag: string;
   updatedAt: string;
   pinned?: boolean;
+  drawing?: string; // Data URL PNG рисунка (Paint)
 };
 
 export const DEFAULT_THEME_COLORS: ThemeColors = {
@@ -72,9 +119,9 @@ export const DEFAULT_THEME_COLORS: ThemeColors = {
   surface: "#0A0D12",
   background: "#05070A",
   text: "#F1F5F9",
-  glassOpacity: 0.78,
+  glassOpacity: 0.88,
   glassBlur: 16,
-  vignette: 0.55,
+  vignette: 0.25,
 };
 
 export const INITIAL_THEMES: ThemePresetItem[] = [
@@ -89,12 +136,12 @@ export const INITIAL_THEMES: ThemePresetItem[] = [
     colors: {
       primary: "#3B82F6",
       secondary: "#64748B",
-      surface: "#090D16",
-      background: "#04070C",
+      surface: "#080D18",
+      background: "#03060C",
       text: "#F1F5F9",
-      glassOpacity: 0.8,
+      glassOpacity: 0.88,
       glassBlur: 16,
-      vignette: 0.55,
+      vignette: 0.25,
     },
   },
   {
@@ -104,11 +151,11 @@ export const INITIAL_THEMES: ThemePresetItem[] = [
       primary: "#F8FAFC",
       secondary: "#71717A",
       surface: "#09090B",
-      background: "#030303",
+      background: "#000000",
       text: "#FAFAFA",
-      glassOpacity: 0.84,
+      glassOpacity: 0.92,
       glassBlur: 14,
-      vignette: 0.6,
+      vignette: 0.3,
     },
   },
   {
@@ -117,12 +164,12 @@ export const INITIAL_THEMES: ThemePresetItem[] = [
     colors: {
       primary: "#10B981",
       secondary: "#64748B",
-      surface: "#08110F",
-      background: "#040807",
+      surface: "#07120F",
+      background: "#030807",
       text: "#ECFDF5",
-      glassOpacity: 0.78,
+      glassOpacity: 0.88,
       glassBlur: 16,
-      vignette: 0.55,
+      vignette: 0.25,
     },
   },
   {
@@ -131,12 +178,12 @@ export const INITIAL_THEMES: ThemePresetItem[] = [
     colors: {
       primary: "#D97706",
       secondary: "#78716C",
-      surface: "#110E0B",
-      background: "#080605",
+      surface: "#100D09",
+      background: "#070504",
       text: "#F5F5F4",
-      glassOpacity: 0.8,
+      glassOpacity: 0.88,
       glassBlur: 16,
-      vignette: 0.55,
+      vignette: 0.25,
     },
   },
 ];
@@ -168,9 +215,9 @@ export const BUILTIN_VIDEOS: VideoPreset[] = [
 export const INITIAL_NOTES: NoteItem[] = [
   {
     id: "note-1",
-    title: "Рабочие задачи и структура",
+    title: "Рабочие задачи и эскизы",
     content:
-      "1. Настроить цветовую схему и плотность панелей в разделе «Настройки».\n2. Отслеживать технологические публикации через агрегатор новостей.\n3. Фиксировать рабочие заметки, ссылки и сниппеты в блокноте.",
+      "1. Настроить размеры и цвета окон в разделе «Настройки».\n2. В блокноте доступен холст Paint для быстрых схем и зарисовок.\n3. Схемы сохраняются автоматически вместе с текущей заметкой.",
     tag: "Система",
     updatedAt: "Сегодня, 18:20",
     pinned: true,
@@ -179,7 +226,7 @@ export const INITIAL_NOTES: NoteItem[] = [
     id: "note-2",
     title: "Заметки по проектам",
     content:
-      "Черновики, списки задач, архитектура сервисов и сохранённые материалы из новостной ленты.",
+      "Черновики, списки задач, архитектура сервисов и эскизы интерфейса.",
     tag: "Проекты",
     updatedAt: "Сегодня, 17:45",
   },
@@ -283,11 +330,25 @@ type EcosystemContextValue = {
   setSurfaceMode: (m: SurfaceMode) => void;
   backdropMode: BackdropMode;
   setBackdropMode: (m: BackdropMode) => void;
+  solidBgColor: string;
+  setSolidBgColor: (color: string) => void;
+  videoQuality: VideoQualitySettings;
+  updateVideoQuality: (patch: Partial<VideoQualitySettings>) => void;
+  windowSize: WindowDimensions;
+  updateWindowSize: (patch: Partial<WindowDimensions>) => void;
+  resetWindowSize: () => void;
+  frameMargins: FrameMargins;
+  updateFrameMargins: (patch: Partial<FrameMargins>) => void;
+  resetFrameMargins: () => void;
   themes: ThemePresetItem[];
   activeThemeId: string;
   theme: ThemeColors;
   selectTheme: (id: string) => void;
   updateActiveThemeColors: (patch: Partial<ThemeColors>) => void;
+  setWindowSurfaceColor: (color: string) => void;
+  setWindowBorderColor: (color: string) => void;
+  setWindowTextColor: (color: string) => void;
+  setWindowGlassOpacity: (opacity: number) => void;
   addCustomTheme: (name: string) => void;
   deleteCustomTheme: (id: string) => void;
   resetActiveTheme: () => void;
@@ -317,13 +378,24 @@ type EcosystemContextValue = {
 
 const EcosystemContext = createContext<EcosystemContextValue | null>(null);
 
-const STORAGE_KEY = "aethvoryn_ecosystem_v2";
-const STRICT_THEME_VERSION = 3;
+const STORAGE_KEY = "aethvoryn_ecosystem_v5";
+const STRICT_THEME_VERSION = 5;
 
 export function EcosystemProvider({ children }: { children: ReactNode }) {
   const [activePage, setActivePage] = useState<EcosystemPage>("news");
   const [surfaceMode, setSurfaceMode] = useState<SurfaceMode>("transparent");
   const [backdropMode, setBackdropMode] = useState<BackdropMode>("video");
+  const [solidBgColor, setSolidBgColorState] = useState<string>("#05070A");
+  const [videoQuality, setVideoQuality] = useState<VideoQualitySettings>(
+    DEFAULT_VIDEO_QUALITY
+  );
+
+  const [windowSize, setWindowSize] = useState<WindowDimensions>(
+    DEFAULT_WINDOW_DIMENSIONS
+  );
+  const [frameMargins, setFrameMargins] = useState<FrameMargins>(
+    DEFAULT_FRAME_MARGINS
+  );
 
   const [themes, setThemes] = useState<ThemePresetItem[]>(INITIAL_THEMES);
   const [activeThemeId, setActiveThemeId] = useState<string>("graphite-steel");
@@ -351,6 +423,13 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     [themes, activeThemeId]
   );
   const theme = activeThemeItem.colors;
+
+  // Sync solidBgColor with theme background if not set independently
+  useEffect(() => {
+    if (theme.background && solidBgColor !== theme.background) {
+      setSolidBgColorState(theme.background);
+    }
+  }, [theme.background]);
 
   // Fetch live technology news from /api/news
   const refreshNews = useCallback(async () => {
@@ -386,6 +465,18 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
         if (parsed.backdropMode === "color" || parsed.backdropMode === "video") {
           setBackdropMode(parsed.backdropMode);
         }
+        if (parsed.solidBgColor && typeof parsed.solidBgColor === "string") {
+          setSolidBgColorState(parsed.solidBgColor);
+        }
+        if (parsed.videoQuality) {
+          setVideoQuality((prev) => ({ ...prev, ...parsed.videoQuality }));
+        }
+        if (parsed.windowSize && typeof parsed.windowSize.width === "number") {
+          setWindowSize(parsed.windowSize);
+        }
+        if (parsed.frameMargins && typeof parsed.frameMargins.top === "number") {
+          setFrameMargins(parsed.frameMargins);
+        }
 
         if (
           parsed.themeVersion === STRICT_THEME_VERSION &&
@@ -397,7 +488,6 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
             setActiveThemeId(parsed.activeThemeId);
           }
         } else if (Array.isArray(parsed.themes)) {
-          // Preserve user-created custom themes while upgrading built-in themes to strict presets
           const customOnly = parsed.themes.filter(
             (t: ThemePresetItem) => t && t.isCustom
           );
@@ -457,6 +547,10 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
           themeVersion: STRICT_THEME_VERSION,
           surfaceMode,
           backdropMode,
+          solidBgColor,
+          videoQuality,
+          windowSize,
+          frameMargins,
           themes,
           activeThemeId,
           etherConfig,
@@ -474,6 +568,10 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     hydrated,
     surfaceMode,
     backdropMode,
+    solidBgColor,
+    videoQuality,
+    windowSize,
+    frameMargins,
     themes,
     activeThemeId,
     etherConfig,
@@ -493,14 +591,15 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--eco-secondary-rgb", hexToRgbTriplet(theme.secondary, "100, 116, 139"));
     root.style.setProperty("--eco-surface", theme.surface);
     root.style.setProperty("--eco-surface-rgb", hexToRgbTriplet(theme.surface, "10, 13, 18"));
-    root.style.setProperty("--eco-bg", theme.background || "#05070A");
-    root.style.setProperty("--eco-bg-rgb", hexToRgbTriplet(theme.background || "#05070A", "5, 7, 10"));
+    const effectiveBg = backdropMode === "color" && solidBgColor ? solidBgColor : (theme.background || "#05070A");
+    root.style.setProperty("--eco-bg", effectiveBg);
+    root.style.setProperty("--eco-bg-rgb", hexToRgbTriplet(effectiveBg, "5, 7, 10"));
     root.style.setProperty("--eco-text", theme.text);
-    const effectiveOpacity = surfaceMode === "solid" ? 0.97 : theme.glassOpacity;
+    const effectiveOpacity = surfaceMode === "solid" ? 0.98 : theme.glassOpacity;
     root.style.setProperty("--eco-glass-opacity", String(effectiveOpacity));
     root.style.setProperty("--eco-glass-blur", `${theme.glassBlur}px`);
-    root.style.setProperty("--eco-vignette", String(theme.vignette));
-  }, [theme, surfaceMode]);
+    root.style.setProperty("--eco-vignette", String(videoQuality.clearMode ? 0 : theme.vignette));
+  }, [theme, surfaceMode, backdropMode, solidBgColor, videoQuality.clearMode]);
 
   const selectTheme = useCallback((id: string) => {
     setActiveThemeId(id);
@@ -518,6 +617,62 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     },
     [activeThemeId]
   );
+
+  const setSolidBgColor = useCallback(
+    (color: string) => {
+      setSolidBgColorState(color);
+      updateActiveThemeColors({ background: color });
+    },
+    [updateActiveThemeColors]
+  );
+
+  const updateVideoQuality = useCallback((patch: Partial<VideoQualitySettings>) => {
+    setVideoQuality((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const setWindowSurfaceColor = useCallback(
+    (color: string) => {
+      updateActiveThemeColors({ surface: color });
+    },
+    [updateActiveThemeColors]
+  );
+
+  const setWindowBorderColor = useCallback(
+    (color: string) => {
+      updateActiveThemeColors({ primary: color });
+    },
+    [updateActiveThemeColors]
+  );
+
+  const setWindowTextColor = useCallback(
+    (color: string) => {
+      updateActiveThemeColors({ text: color });
+    },
+    [updateActiveThemeColors]
+  );
+
+  const setWindowGlassOpacity = useCallback(
+    (opacity: number) => {
+      updateActiveThemeColors({ glassOpacity: opacity });
+    },
+    [updateActiveThemeColors]
+  );
+
+  const updateWindowSize = useCallback((patch: Partial<WindowDimensions>) => {
+    setWindowSize((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const resetWindowSize = useCallback(() => {
+    setWindowSize(DEFAULT_WINDOW_DIMENSIONS);
+  }, []);
+
+  const updateFrameMargins = useCallback((patch: Partial<FrameMargins>) => {
+    setFrameMargins((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const resetFrameMargins = useCallback(() => {
+    setFrameMargins(DEFAULT_FRAME_MARGINS);
+  }, []);
 
   const addCustomTheme = useCallback(
     (name: string) => {
@@ -637,6 +792,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
         minute: "2-digit",
       }),
       pinned: partial?.pinned ?? false,
+      drawing: partial?.drawing,
     };
     setNotes((prev) => [newNote, ...prev]);
     return id;
@@ -664,11 +820,25 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       setSurfaceMode,
       backdropMode,
       setBackdropMode,
+      solidBgColor,
+      setSolidBgColor,
+      videoQuality,
+      updateVideoQuality,
+      windowSize,
+      updateWindowSize,
+      resetWindowSize,
+      frameMargins,
+      updateFrameMargins,
+      resetFrameMargins,
       themes,
       activeThemeId,
       theme,
       selectTheme,
       updateActiveThemeColors,
+      setWindowSurfaceColor,
+      setWindowBorderColor,
+      setWindowTextColor,
+      setWindowGlassOpacity,
       addCustomTheme,
       deleteCustomTheme,
       resetActiveTheme,
@@ -699,11 +869,19 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       activePage,
       surfaceMode,
       backdropMode,
+      solidBgColor,
+      videoQuality,
+      windowSize,
+      frameMargins,
       themes,
       activeThemeId,
       theme,
       selectTheme,
       updateActiveThemeColors,
+      setWindowSurfaceColor,
+      setWindowBorderColor,
+      setWindowTextColor,
+      setWindowGlassOpacity,
       addCustomTheme,
       deleteCustomTheme,
       resetActiveTheme,
