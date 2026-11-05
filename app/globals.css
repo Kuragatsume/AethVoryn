@@ -25,6 +25,8 @@
   --eco-glass-opacity: 0.85;
   --eco-glass-blur: 16px;
   --eco-vignette: 0.55;
+  --video-aspect-ratio: 1.7777777778;
+  --bg-video-height: max(100vh, calc(100vw * 9 / 16));
 }
 
 html {
@@ -33,9 +35,13 @@ html {
 }
 
 body {
+  position: relative;
+  min-height: 100vh;
+  min-height: var(--bg-video-height, 100vh);
   color: var(--eco-text, #f1f5f9);
   font-family: var(--font-sans);
   overflow-x: hidden;
+  overflow-y: auto;
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.01em;
 }
@@ -116,4 +122,31 @@ input[type="range"].hud-range::-moz-range-thumb {
   border-radius: 0px;
   background: var(--eco-primary);
   cursor: pointer;
+}
+
+/* Light / White Theme Contrast Adaptation */
+html.theme-light {
+  color-scheme: light;
+}
+html.theme-light .glass {
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+}
+html.theme-light .glass-subtle {
+  border-color: rgba(15, 23, 42, 0.12);
+}
+html.theme-light .text-white {
+  color: var(--eco-text, #0f172a) !important;
+}
+html.theme-light [class*="border-white/"] {
+  border-color: rgba(15, 23, 42, 0.14) !important;
+}
+html.theme-light [class*="bg-black/"] {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+}
+html.theme-light [class*="bg-white/"] {
+  background-color: rgba(15, 23, 42, 0.05) !important;
+}
+html.theme-light input[type="range"].hud-range {
+  background: rgba(15, 23, 42, 0.22);
 }

@@ -10,27 +10,35 @@ import {
   type ReactNode,
 } from "react";
 import type { ExternalNewsItem } from "@/app/api/news/route";
+import { soundEngine } from "@/utils/soundEngine";
 
-export type EcosystemPage = "news" | "notes" | "settings" | null;
+export type EcosystemPage = "news" | "notes" | "settings" | "ai" | "terminal" | null;
+
+export type WorkspaceId = "all" | "1" | "2" | "3";
 
 export type SurfaceMode = "transparent" | "solid";
 
-export type BackdropMode = "video" | "color";
+export type BackdropMode = "video" | "ether" | "color";
 
 export type VideoDisplayFit = "cover" | "contain" | "fill";
+export type VideoPosition = "center" | "top" | "bottom";
 
 export type VideoQualitySettings = {
   fit: VideoDisplayFit;
+  position?: VideoPosition;
   brightness: number; // 0.6 .. 1.4
   contrast: number; // 0.8 .. 1.4
   clearMode: boolean; // true = 100% direct 4K without muddy vignette overlays
+  ultrawideScroll?: boolean;
 };
 
 export const DEFAULT_VIDEO_QUALITY: VideoQualitySettings = {
   fit: "cover",
+  position: "center",
   brightness: 1.0,
   contrast: 1.0,
   clearMode: true,
+  ultrawideScroll: true,
 };
 
 export type EtherDisplayMode =
@@ -44,6 +52,35 @@ export type EtherConfig = {
   displayMode: EtherDisplayMode;
   customTitle: string;
   customSubtitle: string;
+};
+
+export type HologramShape =
+  | "icosahedron"
+  | "cube"
+  | "octahedron"
+  | "torus"
+  | "helix";
+
+export type HologramConfig = {
+  shape: HologramShape;
+  scale: number; // 0.5 .. 2.0
+  speed: number; // 0.2 .. 3.0
+  showRings: boolean;
+  showNodes: boolean;
+  opacity: number; // 0.2 .. 1.0
+  x: number | null; // null = centered on desktop
+  y: number | null;
+};
+
+export const DEFAULT_HOLOGRAM_CONFIG: HologramConfig = {
+  shape: "icosahedron",
+  scale: 1.0,
+  speed: 1.0,
+  showRings: true,
+  showNodes: true,
+  opacity: 0.85,
+  x: null,
+  y: null,
 };
 
 export type WindowDimensions = {
@@ -61,12 +98,13 @@ export const DEFAULT_WINDOW_DIMENSIONS: WindowDimensions = {
 export type WindowKind = "builtin" | "site";
 
 export type DesktopWindowState = {
-  id: string; // "news" | "notes" | "settings" | "site-..."
+  id: string; // "news" | "notes" | "settings" | "ai" | "terminal" | "site-..."
   kind: WindowKind;
   code: string; // "01", "02", "03", "04"...
   title: string;
   url?: string;
   useProxy?: boolean;
+  workspace?: "1" | "2" | "3";
   isOpen: boolean;
   isMaximized: boolean;
   x: number;
@@ -82,36 +120,67 @@ export const INITIAL_WINDOWS: DesktopWindowState[] = [
     kind: "builtin",
     code: "01",
     title: "Новости",
+    workspace: "1",
     isOpen: true,
     isMaximized: false,
-    x: 160,
-    y: 72,
+    x: 140,
+    y: 76,
     width: 960,
     height: 640,
-    zIndex: 12,
+    zIndex: 14,
   },
   {
     id: "notes",
     kind: "builtin",
     code: "02",
     title: "Блокнот",
+    workspace: "2",
     isOpen: false,
     isMaximized: false,
-    x: 200,
-    y: 96,
+    x: 180,
+    y: 88,
     width: 1020,
     height: 650,
+    zIndex: 13,
+  },
+  {
+    id: "ai",
+    kind: "builtin",
+    code: "03",
+    title: "ИИ-Ассистент",
+    workspace: "1",
+    isOpen: false,
+    isMaximized: false,
+    x: 210,
+    y: 82,
+    width: 880,
+    height: 620,
+    zIndex: 12,
+  },
+  {
+    id: "terminal",
+    kind: "builtin",
+    code: "04",
+    title: "Терминал",
+    workspace: "2",
+    isOpen: false,
+    isMaximized: false,
+    x: 240,
+    y: 94,
+    width: 860,
+    height: 560,
     zIndex: 11,
   },
   {
     id: "settings",
     kind: "builtin",
-    code: "03",
+    code: "05",
     title: "Настройки",
+    workspace: "3",
     isOpen: false,
     isMaximized: false,
-    x: 240,
-    y: 84,
+    x: 220,
+    y: 80,
     width: 940,
     height: 660,
     zIndex: 10,
@@ -186,6 +255,48 @@ export const DEFAULT_THEME_COLORS: ThemeColors = {
 
 export const INITIAL_THEMES: ThemePresetItem[] = [
   {
+    id: "theme-dark",
+    name: "Тёмная",
+    colors: {
+      primary: "#E2E8F0",
+      secondary: "#64748B",
+      surface: "#080A0F",
+      background: "#030407",
+      text: "#F8FAFC",
+      glassOpacity: 0.9,
+      glassBlur: 14,
+      vignette: 0.25,
+    },
+  },
+  {
+    id: "theme-white",
+    name: "Белая",
+    colors: {
+      primary: "#1E293B",
+      secondary: "#475569",
+      surface: "#F8FAFC",
+      background: "#E2E8F0",
+      text: "#0F172A",
+      glassOpacity: 0.92,
+      glassBlur: 14,
+      vignette: 0.05,
+    },
+  },
+  {
+    id: "theme-gray",
+    name: "Серая",
+    colors: {
+      primary: "#CBD5E1",
+      secondary: "#94A3B8",
+      surface: "#232832",
+      background: "#161920",
+      text: "#F1F5F9",
+      glassOpacity: 0.9,
+      glassBlur: 14,
+      vignette: 0.2,
+    },
+  },
+  {
     id: "graphite-steel",
     name: "Графит и Сталь",
     colors: DEFAULT_THEME_COLORS,
@@ -200,22 +311,8 @@ export const INITIAL_THEMES: ThemePresetItem[] = [
       background: "#03060C",
       text: "#F1F5F9",
       glassOpacity: 0.88,
-      glassBlur: 16,
-      vignette: 0.25,
-    },
-  },
-  {
-    id: "monochrome-onyx",
-    name: "Оникс Монохром",
-    colors: {
-      primary: "#F8FAFC",
-      secondary: "#71717A",
-      surface: "#09090B",
-      background: "#000000",
-      text: "#FAFAFA",
-      glassOpacity: 0.92,
       glassBlur: 14,
-      vignette: 0.3,
+      vignette: 0.25,
     },
   },
   {
@@ -228,7 +325,7 @@ export const INITIAL_THEMES: ThemePresetItem[] = [
       background: "#030807",
       text: "#ECFDF5",
       glassOpacity: 0.88,
-      glassBlur: 16,
+      glassBlur: 14,
       vignette: 0.25,
     },
   },
@@ -242,7 +339,7 @@ export const INITIAL_THEMES: ThemePresetItem[] = [
       background: "#070504",
       text: "#F5F5F4",
       glassOpacity: 0.88,
-      glassBlur: 16,
+      glassBlur: 14,
       vignette: 0.25,
     },
   },
@@ -409,6 +506,18 @@ export function extractSiteLabel(url: string, customTitle?: string): string {
 type EcosystemContextValue = {
   activePage: EcosystemPage;
   setActivePage: (p: EcosystemPage) => void;
+  // Workspaces & Command Palette
+  activeWorkspace: WorkspaceId;
+  setActiveWorkspace: (ws: WorkspaceId) => void;
+  commandPaletteOpen: boolean;
+  setCommandPaletteOpen: (v: boolean) => void;
+  sfxEnabled: boolean;
+  setSfxEnabled: (v: boolean) => void;
+  hologramEnabled: boolean;
+  setHologramEnabled: (v: boolean) => void;
+  hologramConfig: HologramConfig;
+  updateHologramConfig: (patch: Partial<HologramConfig>) => void;
+  resetHologramPosition: () => void;
   // Multi-window Desktop API
   windows: DesktopWindowState[];
   activeWindowId: string | null;
@@ -418,6 +527,7 @@ type EcosystemContextValue = {
   closeAllWindows: () => void;
   focusWindow: (id: string) => void;
   updateWindow: (id: string, patch: Partial<DesktopWindowState>) => void;
+  snapWindow: (id: string, mode: "left" | "right" | "maximize") => void;
   resetWindowPositionAndSize: (id: string) => void;
   addSiteWindow: (url: string, title?: string) => string;
   removeSiteWindow: (id: string) => void;
@@ -472,17 +582,26 @@ type EcosystemContextValue = {
   addNote: (note?: Partial<NoteItem>) => string;
   updateNote: (id: string, patch: Partial<NoteItem>) => void;
   deleteNote: (id: string) => void;
+  exportProfileJson: () => void;
+  importProfileJson: (rawJson: string) => boolean;
 };
 
 const EcosystemContext = createContext<EcosystemContextValue | null>(null);
 
 const STORAGE_KEY = "aethvoryn_ecosystem_v6";
 const LEGACY_STORAGE_KEY = "aethvoryn_ecosystem_v5";
-const STRICT_THEME_VERSION = 5;
+const STRICT_THEME_VERSION = 6;
 
 export function EcosystemProvider({ children }: { children: ReactNode }) {
   const [windows, setWindows] = useState<DesktopWindowState[]>(INITIAL_WINDOWS);
   const [isAnyWindowDragging, setIsAnyWindowDragging] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("all");
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [sfxEnabled, setSfxEnabledState] = useState(false);
+  const [hologramEnabled, setHologramEnabled] = useState(true);
+  const [hologramConfig, setHologramConfig] = useState<HologramConfig>(
+    DEFAULT_HOLOGRAM_CONFIG
+  );
 
   const [surfaceMode, setSurfaceMode] = useState<SurfaceMode>("transparent");
   const [backdropMode, setBackdropMode] = useState<BackdropMode>("video");
@@ -519,6 +638,11 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
   const [notes, setNotes] = useState<NoteItem[]>(INITIAL_NOTES);
   const [hydrated, setHydrated] = useState(false);
 
+  const setSfxEnabled = useCallback((v: boolean) => {
+    setSfxEnabledState(v);
+    soundEngine.setSfxEnabled(v);
+  }, []);
+
   const activeThemeItem = useMemo(
     () => themes.find((t) => t.id === activeThemeId) ?? themes[0],
     [themes, activeThemeId]
@@ -527,18 +651,24 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
 
   // Determine the currently active (top-most open) window
   const activeWindowId = useMemo(() => {
-    const openWins = windows.filter((w) => w.isOpen);
+    const openWins = windows.filter(
+      (w) =>
+        w.isOpen &&
+        (activeWorkspace === "all" || !w.workspace || w.workspace === activeWorkspace)
+    );
     if (openWins.length === 0) return null;
     return openWins.reduce((top, curr) =>
       curr.zIndex >= top.zIndex ? curr : top
     ).id;
-  }, [windows]);
+  }, [windows, activeWorkspace]);
 
   const activePage = useMemo<EcosystemPage>(() => {
     if (
       activeWindowId === "news" ||
       activeWindowId === "notes" ||
-      activeWindowId === "settings"
+      activeWindowId === "settings" ||
+      activeWindowId === "ai" ||
+      activeWindowId === "terminal"
     ) {
       return activeWindowId;
     }
@@ -552,17 +682,16 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     const vh = window.innerHeight;
     setWindows((prev) =>
       prev.map((w, idx) => {
-        // Keep within screen bounds
         const clampedW = Math.min(w.width, Math.max(420, vw - 120));
         const clampedH = Math.min(w.height, Math.max(320, vh - 120));
-        const defaultX = Math.max(24, Math.round((vw - clampedW) / 2) - 30 + idx * 26);
-        const defaultY = Math.max(56, Math.round((vh - clampedH) / 2) - 20 + idx * 22);
+        const defaultX = Math.max(24, Math.round((vw - clampedW) / 2) - 40 + idx * 24);
+        const defaultY = Math.max(68, Math.round((vh - clampedH) / 2) - 10 + idx * 20);
         return {
           ...w,
           width: clampedW,
           height: clampedH,
-          x: Math.min(Math.max(0, w.x || defaultX), Math.max(0, vw - 200)),
-          y: Math.min(Math.max(0, w.y || defaultY), Math.max(0, vh - 120)),
+          x: Math.min(Math.max(16, w.x || defaultX), Math.max(16, vw - 220)),
+          y: Math.min(Math.max(68, w.y || defaultY), Math.max(68, vh - 120)),
         };
       })
     );
@@ -608,14 +737,40 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
         if (parsed.surfaceMode === "solid" || parsed.surfaceMode === "transparent") {
           setSurfaceMode(parsed.surfaceMode);
         }
-        if (parsed.backdropMode === "color" || parsed.backdropMode === "video") {
+        if (
+          parsed.backdropMode === "color" ||
+          parsed.backdropMode === "ether" ||
+          parsed.backdropMode === "video"
+        ) {
           setBackdropMode(parsed.backdropMode);
         }
         if (parsed.solidBgColor && typeof parsed.solidBgColor === "string") {
           setSolidBgColorState(parsed.solidBgColor);
         }
+        setSfxEnabledState(false);
+        soundEngine.setSfxEnabled(false);
+        if (typeof parsed.hologramEnabled === "boolean") {
+          setHologramEnabled(parsed.hologramEnabled);
+        }
+        if (parsed.hologramConfig && typeof parsed.hologramConfig === "object") {
+          setHologramConfig((prev) => ({
+            ...prev,
+            ...parsed.hologramConfig,
+          }));
+        }
         if (parsed.videoQuality) {
-          setVideoQuality((prev) => ({ ...prev, ...parsed.videoQuality }));
+          setVideoQuality((prev) => ({
+            ...prev,
+            ...parsed.videoQuality,
+            fit:
+              parsed.videoQuality.fit === "contain"
+                ? "cover"
+                : parsed.videoQuality.fit || "cover",
+            ultrawideScroll:
+              parsed.videoQuality.ultrawideScroll !== undefined
+                ? parsed.videoQuality.ultrawideScroll
+                : true,
+          }));
         }
         if (parsed.windowSize && typeof parsed.windowSize.width === "number") {
           setWindowSize(parsed.windowSize);
@@ -624,7 +779,6 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
           setFrameMargins(parsed.frameMargins);
         }
         if (Array.isArray(parsed.windows) && parsed.windows.length > 0) {
-          // Ensure all 3 builtin windows exist plus any saved custom site windows
           const savedMap = new Map<string, DesktopWindowState>();
           for (const w of parsed.windows) {
             if (w && typeof w.id === "string") {
@@ -633,11 +787,25 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
           }
           const mergedBuiltins = INITIAL_WINDOWS.map((initW) => {
             const saved = savedMap.get(initW.id);
-            return saved ? { ...initW, ...saved, kind: "builtin" as const } : initW;
+            return saved
+              ? {
+                  ...initW,
+                  ...saved,
+                  kind: "builtin" as const,
+                  code: initW.code,
+                  title: initW.title,
+                  workspace: initW.workspace,
+                  y: Math.max(68, saved.y ?? initW.y),
+                }
+              : initW;
           });
-          const customSites = parsed.windows.filter(
-            (w: DesktopWindowState) => w && w.kind === "site" && w.url
-          );
+          const customSites = parsed.windows
+            .filter((w: DesktopWindowState) => w && w.kind === "site" && w.url)
+            .map((w: DesktopWindowState, idx: number) => ({
+              ...w,
+              code: String(INITIAL_WINDOWS.length + idx + 1).padStart(2, "0"),
+              workspace: w.workspace || ("3" as const),
+            }));
           setWindows([...mergedBuiltins, ...customSites]);
         }
 
@@ -712,6 +880,9 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
             surfaceMode,
             backdropMode,
             solidBgColor,
+            sfxEnabled,
+            hologramEnabled,
+            hologramConfig,
             videoQuality,
             windowSize,
             windows,
@@ -736,6 +907,9 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     surfaceMode,
     backdropMode,
     solidBgColor,
+    sfxEnabled,
+    hologramEnabled,
+    hologramConfig,
     videoQuality,
     windowSize,
     windows,
@@ -750,15 +924,16 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     customVideos,
   ]);
 
-  // Apply CSS variables to :root
+  // Apply CSS variables to :root + detect Light/White theme for crisp contrast
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--eco-primary", theme.primary);
     root.style.setProperty("--eco-primary-rgb", hexToRgbTriplet(theme.primary, "203, 213, 225"));
     root.style.setProperty("--eco-secondary", theme.secondary);
     root.style.setProperty("--eco-secondary-rgb", hexToRgbTriplet(theme.secondary, "100, 116, 139"));
+    const surfRgb = hexToRgbTriplet(theme.surface, "10, 13, 18");
     root.style.setProperty("--eco-surface", theme.surface);
-    root.style.setProperty("--eco-surface-rgb", hexToRgbTriplet(theme.surface, "10, 13, 18"));
+    root.style.setProperty("--eco-surface-rgb", surfRgb);
     const effectiveBg = backdropMode === "color" && solidBgColor ? solidBgColor : (theme.background || "#05070A");
     root.style.setProperty("--eco-bg", effectiveBg);
     root.style.setProperty("--eco-bg-rgb", hexToRgbTriplet(effectiveBg, "5, 7, 10"));
@@ -767,7 +942,24 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--eco-glass-opacity", String(effectiveOpacity));
     root.style.setProperty("--eco-glass-blur", `${theme.glassBlur}px`);
     root.style.setProperty("--eco-vignette", String(videoQuality.clearMode ? 0 : theme.vignette));
+
+    // Toggle .theme-light class when surface luminance is bright (e.g. White theme)
+    const [sr, sg, sb] = surfRgb.split(",").map((n) => Number(n.trim()) || 0);
+    const lum = (0.299 * sr + 0.587 * sg + 0.114 * sb) / 255;
+    if (lum > 0.55) {
+      root.classList.add("theme-light");
+    } else {
+      root.classList.remove("theme-light");
+    }
   }, [theme, surfaceMode, backdropMode, solidBgColor, videoQuality.clearMode]);
+
+  const updateHologramConfig = useCallback((patch: Partial<HologramConfig>) => {
+    setHologramConfig((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const resetHologramPosition = useCallback(() => {
+    setHologramConfig((prev) => ({ ...prev, x: null, y: null }));
+  }, []);
 
   // Multi-Window Actions
   const focusWindow = useCallback((id: string) => {
@@ -778,6 +970,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       if (target.zIndex === maxZ && prev.filter((w) => w.zIndex === maxZ).length === 1) {
         return prev;
       }
+      soundEngine.playClick();
       return prev.map((w) => (w.id === id ? { ...w, zIndex: maxZ + 1 } : w));
     });
   }, []);
@@ -788,6 +981,8 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       if (!target) return prev;
       const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 10);
       const nextOpen = !target.isOpen;
+      if (nextOpen) soundEngine.playWindowOpen();
+      else soundEngine.playWindowClose();
       return prev.map((w) =>
         w.id === id
           ? { ...w, isOpen: nextOpen, zIndex: nextOpen ? maxZ + 1 : w.zIndex }
@@ -797,6 +992,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openWindow = useCallback((id: string) => {
+    soundEngine.playWindowOpen();
     setWindows((prev) => {
       const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 10);
       return prev.map((w) =>
@@ -806,12 +1002,14 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const closeWindow = useCallback((id: string) => {
+    soundEngine.playWindowClose();
     setWindows((prev) =>
       prev.map((w) => (w.id === id ? { ...w, isOpen: false } : w))
     );
   }, []);
 
   const closeAllWindows = useCallback(() => {
+    soundEngine.playWindowClose();
     setWindows((prev) => prev.map((w) => ({ ...w, isOpen: false })));
   }, []);
 
@@ -849,13 +1047,50 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const snapWindow = useCallback(
+    (id: string, mode: "left" | "right" | "maximize") => {
+      soundEngine.playSnap();
+      const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
+      const vh = typeof window !== "undefined" ? window.innerHeight : 900;
+      const scrollY = typeof window !== "undefined" ? window.scrollY : 0;
+      const rightRailSpace = 72;
+      const usableW = Math.max(640, vw - rightRailSpace);
+
+      setWindows((prev) => {
+        const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 10);
+        return prev.map((w) => {
+          if (w.id !== id) return w;
+          if (mode === "maximize") {
+            return { ...w, isOpen: true, isMaximized: true, zIndex: maxZ + 1 };
+          }
+          const halfW = Math.floor(usableW / 2) - 12;
+          const snapH = Math.max(360, vh - 88);
+          const snapY = Math.max(68, scrollY + 68);
+          return {
+            ...w,
+            isOpen: true,
+            isMaximized: false,
+            x: mode === "left" ? 12 : halfW + 20,
+            y: snapY,
+            width: halfW,
+            height: snapH,
+            zIndex: maxZ + 1,
+          };
+        });
+      });
+    },
+    []
+  );
+
   const resetWindowPositionAndSize = useCallback((id: string) => {
+    soundEngine.playClick();
     const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
     const vh = typeof window !== "undefined" ? window.innerHeight : 900;
+    const scrollY = typeof window !== "undefined" ? window.scrollY : 0;
     const defaultW = 960;
     const defaultH = 640;
     const x = Math.max(24, Math.round((vw - defaultW) / 2));
-    const y = Math.max(56, Math.round((vh - defaultH) / 2));
+    const y = Math.max(68, scrollY + Math.round((vh - defaultH) / 2));
     setWindows((prev) =>
       prev.map((w) =>
         w.id === id
@@ -880,6 +1115,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
     const vh = typeof window !== "undefined" ? window.innerHeight : 900;
 
+    soundEngine.playWindowOpen();
     setWindows((prev) => {
       const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 10);
       const nextNum = prev.length + 1;
@@ -888,7 +1124,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       const w = Math.min(1040, Math.max(520, vw - 180));
       const h = Math.min(680, Math.max(400, vh - 160));
       const x = Math.max(30, Math.round((vw - w) / 2) - 60 + offset);
-      const y = Math.max(56, Math.round((vh - h) / 2) - 40 + offset);
+      const y = Math.max(68, Math.round((vh - h) / 2) - 20 + offset);
 
       const newWin: DesktopWindowState = {
         id,
@@ -897,6 +1133,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
         title: label,
         url: cleanUrl,
         useProxy: false,
+        workspace: "3",
         isOpen: true,
         isMaximized: false,
         x,
@@ -912,9 +1149,9 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const removeSiteWindow = useCallback((id: string) => {
+    soundEngine.playWindowClose();
     setWindows((prev) => {
       const filtered = prev.filter((w) => w.id !== id || w.kind === "builtin");
-      // Re-index codes cleanly
       return filtered.map((w, idx) => ({
         ...w,
         code: String(idx + 1).padStart(2, "0"),
@@ -1156,10 +1393,139 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     setNotes((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
+  const exportProfileJson = useCallback(() => {
+    soundEngine.playSuccess();
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      version: STRICT_THEME_VERSION,
+      surfaceMode,
+      backdropMode,
+      solidBgColor,
+      sfxEnabled,
+      hologramEnabled,
+      videoQuality,
+      windowSize,
+      windows,
+      frameMargins,
+      themes,
+      activeThemeId,
+      etherConfig,
+      activeVideoId,
+      loopVideo,
+      bookmarkedIds,
+      notes,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `aethvoryn-profile-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [
+    surfaceMode,
+    backdropMode,
+    solidBgColor,
+    sfxEnabled,
+    hologramEnabled,
+    hologramConfig,
+    videoQuality,
+    windowSize,
+    windows,
+    frameMargins,
+    themes,
+    activeThemeId,
+    etherConfig,
+    activeVideoId,
+    loopVideo,
+    bookmarkedIds,
+    notes,
+  ]);
+
+  const importProfileJson = useCallback((rawJson: string): boolean => {
+    try {
+      const parsed = JSON.parse(rawJson);
+      if (!parsed || typeof parsed !== "object") return false;
+      if (parsed.surfaceMode === "solid" || parsed.surfaceMode === "transparent") {
+        setSurfaceMode(parsed.surfaceMode);
+      }
+      if (parsed.backdropMode === "color" || parsed.backdropMode === "video") {
+        setBackdropMode(parsed.backdropMode);
+      }
+      if (typeof parsed.solidBgColor === "string") {
+        setSolidBgColorState(parsed.solidBgColor);
+      }
+      if (typeof parsed.sfxEnabled === "boolean") {
+        setSfxEnabledState(parsed.sfxEnabled);
+        soundEngine.setSfxEnabled(parsed.sfxEnabled);
+      }
+      if (typeof parsed.hologramEnabled === "boolean") {
+        setHologramEnabled(parsed.hologramEnabled);
+      }
+      if (parsed.videoQuality) {
+        setVideoQuality((prev) => ({ ...prev, ...parsed.videoQuality }));
+      }
+      if (parsed.frameMargins) {
+        setFrameMargins((prev) => ({ ...prev, ...parsed.frameMargins }));
+      }
+      if (Array.isArray(parsed.themes) && parsed.themes.length > 0) {
+        setThemes(parsed.themes);
+      }
+      if (typeof parsed.activeThemeId === "string") {
+        setActiveThemeId(parsed.activeThemeId);
+      }
+      if (Array.isArray(parsed.notes)) {
+        setNotes(parsed.notes);
+      }
+      if (Array.isArray(parsed.bookmarkedIds)) {
+        setBookmarkedIds(parsed.bookmarkedIds);
+      }
+      if (Array.isArray(parsed.windows) && parsed.windows.length > 0) {
+        const savedMap = new Map<string, DesktopWindowState>();
+        for (const w of parsed.windows) {
+          if (w && typeof w.id === "string") savedMap.set(w.id, w);
+        }
+        const mergedBuiltins = INITIAL_WINDOWS.map((initW) => {
+          const saved = savedMap.get(initW.id);
+          return saved
+            ? {
+                ...initW,
+                ...saved,
+                kind: "builtin" as const,
+                code: initW.code,
+                title: initW.title,
+              }
+            : initW;
+        });
+        const customSites = parsed.windows.filter(
+          (w: DesktopWindowState) => w && w.kind === "site" && w.url
+        );
+        setWindows([...mergedBuiltins, ...customSites]);
+      }
+      soundEngine.playSuccess();
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const value = useMemo<EcosystemContextValue>(
     () => ({
       activePage,
       setActivePage,
+      activeWorkspace,
+      setActiveWorkspace,
+      commandPaletteOpen,
+      setCommandPaletteOpen,
+      sfxEnabled,
+      setSfxEnabled,
+      hologramEnabled,
+      setHologramEnabled,
+      hologramConfig,
+      updateHologramConfig,
+      resetHologramPosition,
       windows,
       activeWindowId,
       toggleWindow,
@@ -1168,6 +1534,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       closeAllWindows,
       focusWindow,
       updateWindow,
+      snapWindow,
       resetWindowPositionAndSize,
       addSiteWindow,
       removeSiteWindow,
@@ -1221,10 +1588,20 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       addNote,
       updateNote,
       deleteNote,
+      exportProfileJson,
+      importProfileJson,
     }),
     [
       activePage,
       setActivePage,
+      activeWorkspace,
+      commandPaletteOpen,
+      sfxEnabled,
+      setSfxEnabled,
+      hologramEnabled,
+      hologramConfig,
+      updateHologramConfig,
+      resetHologramPosition,
       windows,
       activeWindowId,
       toggleWindow,
@@ -1233,6 +1610,7 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       closeAllWindows,
       focusWindow,
       updateWindow,
+      snapWindow,
       resetWindowPositionAndSize,
       addSiteWindow,
       removeSiteWindow,
@@ -1282,6 +1660,8 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
       addNote,
       updateNote,
       deleteNote,
+      exportProfileJson,
+      importProfileJson,
     ]
   );
 

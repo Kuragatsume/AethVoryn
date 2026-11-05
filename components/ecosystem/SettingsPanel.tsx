@@ -2,28 +2,104 @@
 
 import {
   Activity,
+  Box,
   Check,
   Crop,
+  Download,
   Film,
+  FolderOpen,
   Link2,
   Maximize2,
   Minimize2,
+  Music,
   Palette,
+  Pause,
   Play,
   Plus,
+  RefreshCw,
   RotateCcw,
+  Search,
+  Shuffle,
+  SkipBack,
+  SkipForward,
   Sliders,
-  Square,
   Trash2,
   Upload,
+  Volume2,
 } from "lucide-react";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  DEFAULT_LOCAL_MUSIC_PATH,
+  RADIO_STATIONS,
+  soundEngine,
+  type LocalTrackItem,
+} from "@/utils/soundEngine";
 import SpotlightCard from "../ui/SpotlightCard";
 import {
   useEcosystem,
   type EtherDisplayMode,
+  type HologramShape,
   type ThemeColors,
 } from "./EcosystemContext";
+
+type SettingsCategory =
+  | "themes"
+  | "backdrop"
+  | "hologram"
+  | "audio"
+  | "windows"
+  | "system";
+
+const CATEGORIES: {
+  id: SettingsCategory;
+  code: string;
+  label: string;
+  subtitle: string;
+  icon: typeof Palette;
+}[] = [
+  {
+    id: "themes",
+    code: "01",
+    label: "Темы и Палитра",
+    subtitle: "Тёмная, Белая, Серая и цвета",
+    icon: Palette,
+  },
+  {
+    id: "backdrop",
+    code: "02",
+    label: "Фон и Видео",
+    subtitle: "Видеофон, сетка и сплошной цвет",
+    icon: Film,
+  },
+  {
+    id: "hologram",
+    code: "03",
+    label: "3D-Объект",
+    subtitle: "Форма, вращение, размер и позиция",
+    icon: Box,
+  },
+  {
+    id: "audio",
+    code: "04",
+    label: "Музыка и Радио",
+    subtitle: "Папка MediaHuman и звук",
+    icon: Music,
+  },
+  {
+    id: "windows",
+    code: "05",
+    label: "Окна и Стекло",
+    subtitle: "Размеры, прозрачность и поля",
+    icon: Maximize2,
+  },
+  {
+    id: "system",
+    code: "06",
+    label: "Система и Бэкап",
+    subtitle: "Виджеты и профиль .JSON",
+    icon: Activity,
+  },
+];
 
 const COLOR_FIELDS: {
   key: keyof Pick<
@@ -71,20 +147,52 @@ const ETHER_MODES: { id: EtherDisplayMode; label: string; tooltip: string }[] = 
 const SOLID_BG_PRESETS = [
   { name: "Чёрный", hex: "#000000" },
   { name: "Обсидиан", hex: "#05070A" },
+  { name: "Серая сталь", hex: "#181C24" },
+  { name: "Светлый", hex: "#E2E8F0" },
+  { name: "Белый", hex: "#F8FAFC" },
   { name: "Кобальт", hex: "#080D18" },
   { name: "Изумруд", hex: "#07120F" },
-  { name: "Графит", hex: "#0F172A" },
-  { name: "Нейтральный", hex: "#121212" },
-  { name: "Оникс", hex: "#09090B" },
 ];
 
 const WINDOW_SURFACE_PRESETS = [
-  { name: "Обсидиан", hex: "#0A0D12" },
+  { name: "Тёмная", hex: "#080A0F" },
   { name: "Чёрный", hex: "#000000" },
+  { name: "Серая", hex: "#232832" },
+  { name: "Белая", hex: "#F8FAFC" },
   { name: "Сланец", hex: "#0F172A" },
   { name: "Холодный", hex: "#080D18" },
-  { name: "Хвойный", hex: "#07120F" },
-  { name: "Сталь", hex: "#141820" },
+];
+
+const HOLOGRAM_SHAPES: {
+  id: HologramShape;
+  label: string;
+  desc: string;
+}[] = [
+  {
+    id: "icosahedron",
+    label: "Икосаэдр",
+    desc: "Классическая геодезическая 20-гранная сфера",
+  },
+  {
+    id: "cube",
+    label: "Гиперкуб (Тессеракт)",
+    desc: "Двойной 4D-куб с внутренними связями",
+  },
+  {
+    id: "octahedron",
+    label: "Октаэдр (Кристалл)",
+    desc: "Двухъярусный энергетический кристалл",
+  },
+  {
+    id: "torus",
+    label: "Орбитальный Тор",
+    desc: "Кольцевая тороидальная решётка",
+  },
+  {
+    id: "helix",
+    label: "Двойная Спираль",
+    desc: "Вращающаяся геномная структура с перемычками",
+  },
 ];
 
 export default function SettingsPanel() {
@@ -124,9 +232,21 @@ export default function SettingsPanel() {
     loopVideo,
     setLoopVideo,
     replayVideo,
+    sfxEnabled,
+    setSfxEnabled,
+    hologramEnabled,
+    setHologramEnabled,
+    hologramConfig,
+    updateHologramConfig,
+    resetHologramPosition,
+    exportProfileJson,
+    importProfileJson,
   } = useEcosystem();
 
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory>("themes");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [urlTitle, setUrlTitle] = useState("");
   const [urlInput, setUrlInput] = useState("");
@@ -134,6 +254,25 @@ export default function SettingsPanel() {
   const [newThemeName, setNewThemeName] = useState("");
   const [addingTheme, setAddingTheme] = useState(false);
   const [linkMargins, setLinkMargins] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+
+  // Local Music & Radio state for Category 04
+  const [musicDirInput, setMusicDirInput] = useState(DEFAULT_LOCAL_MUSIC_PATH);
+  const [trackSearch, setTrackSearch] = useState("");
+  const [radioState, setRadioState] = useState(() => soundEngine.getRadioState());
+
+  useEffect(() => {
+    soundEngine.loadLocalTracks();
+    const sync = () => {
+      const st = soundEngine.getRadioState();
+      setRadioState(st);
+      if (st.folderPath) {
+        setMusicDirInput(st.folderPath);
+      }
+    };
+    sync();
+    return soundEngine.subscribe(sync);
+  }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -158,597 +297,261 @@ export default function SettingsPanel() {
 
   const handleCreateTheme = (e: FormEvent) => {
     e.preventDefault();
-    addCustomTheme(newThemeName);
+    if (!newThemeName.trim()) return;
+    addCustomTheme(newThemeName.trim());
     setNewThemeName("");
     setAddingTheme(false);
   };
 
-  const handleMarginChange = (side: keyof typeof frameMargins, value: number) => {
+  const handleMarginChange = (
+    side: "top" | "right" | "bottom" | "left",
+    val: number
+  ) => {
     if (linkMargins) {
-      updateFrameMargins({
-        top: value,
-        bottom: value,
-        left: Math.round(value * 1.3),
-        right: Math.round(value * 1.3),
-      });
+      updateFrameMargins({ top: val, right: val, bottom: val, left: val });
     } else {
-      updateFrameMargins({ [side]: value });
+      updateFrameMargins({ [side]: val });
     }
   };
 
+  const filteredTracks: { track: LocalTrackItem; index: number }[] = radioState.tracks
+    .map((track, index) => ({ track, index }))
+    .filter(({ track }) => {
+      if (!trackSearch.trim()) return true;
+      const q = trackSearch.toLowerCase();
+      return (
+        track.title.toLowerCase().includes(q) ||
+        track.artist.toLowerCase().includes(q) ||
+        track.fileName.toLowerCase().includes(q)
+      );
+    });
+
   return (
-    <div className="flex h-full flex-col font-sans">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-        <div className="flex items-center gap-2.5">
-          <span className="font-mono text-[11px] uppercase tracking-widest opacity-45">
-            03 //
-          </span>
-          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
-            Конфигурация системы
-          </h2>
+    <div className="flex h-full w-full flex-col overflow-hidden md:flex-row">
+      {/* LEFT SIDEBAR: CATEGORY NAVIGATION MENU */}
+      <aside className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-white/10 bg-black/25 p-2.5 md:w-60 md:flex-col md:overflow-y-auto md:border-b-0 md:border-r md:p-3">
+        <div className="mb-2 hidden border-b border-white/10 pb-2.5 md:block">
+          <div className="flex items-center gap-2">
+            <Sliders
+              className="h-3.5 w-3.5"
+              style={{ color: "var(--eco-primary)" }}
+            />
+            <span className="font-mono text-xs font-bold uppercase tracking-wider">
+              Разделы настроек
+            </span>
+          </div>
+          <p className="mt-0.5 font-mono text-[10px] opacity-55">
+            Выберите категорию слева
+          </p>
         </div>
 
-        <button
-          type="button"
-          onClick={resetActiveTheme}
-          title="Вернуть стандартные параметры темы"
-          className="inline-flex items-center gap-1.5 rounded-none border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs font-medium transition-colors hover:border-white/25 hover:bg-white/[0.08]"
-        >
-          <RotateCcw className="h-3.5 w-3.5" /> Сбросить тему
-        </button>
-      </div>
-
-      {/* Scrollable Content */}
-      <div className="mt-3.5 flex-1 space-y-6 overflow-y-auto pr-1">
-        {/* SECTION 1: WINDOW DIMENSIONS & WINDOW COLOR (ОКНА И РАБОЧАЯ ОБЛАСТЬ) */}
-        <section className="space-y-3.5 border-b border-white/10 pb-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Square className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-              <h3 className="font-mono text-xs font-semibold uppercase tracking-wider opacity-90">
-                Размеры и цвет окон
-              </h3>
-            </div>
-            <div className="flex items-center gap-1.5 font-mono text-[11px]">
-              <span className="opacity-60">Текущий:</span>
-              <span className="font-semibold" style={{ color: "var(--eco-primary)" }}>
-                {windowSize.isMaximized
-                  ? "НА ВЕСЬ ЭКРАН"
-                  : `${Math.round(windowSize.width)} × ${Math.round(windowSize.height)} PX`}
-              </span>
-            </div>
-          </div>
-
-          {/* Quick Window Size Presets */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 font-mono text-[10px] uppercase opacity-45">Пресеты:</span>
-            {[
-              { label: "Компакт (780×520)", w: 780, h: 520 },
-              { label: "Стандарт (940×640)", w: 940, h: 640 },
-              { label: "Широкий (1200×720)", w: 1200, h: 720 },
-              { label: "Максимальный (1440×820)", w: 1440, h: 820 },
-            ].map((p) => {
-              const active =
-                !windowSize.isMaximized &&
-                Math.abs(windowSize.width - p.w) < 15 &&
-                Math.abs(windowSize.height - p.h) < 15;
-              return (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() =>
-                    updateWindowSize({ width: p.w, height: p.h, isMaximized: false })
-                  }
-                  className={`rounded-none border px-2.5 py-1 font-mono text-[11px] transition-colors ${
-                    active
-                      ? "font-semibold"
-                      : "border-white/10 bg-white/[0.03] opacity-70 hover:border-white/25 hover:opacity-100"
-                  }`}
-                  style={
-                    active
-                      ? {
-                          backgroundColor: "rgba(var(--eco-primary-rgb), 0.18)",
-                          borderColor: "var(--eco-primary)",
-                          color: "var(--eco-primary)",
-                        }
-                      : undefined
-                  }
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-
+        {CATEGORIES.map((cat) => {
+          const Icon = cat.icon;
+          const active = activeCategory === cat.id;
+          return (
             <button
+              key={cat.id}
               type="button"
-              onClick={() => updateWindowSize({ isMaximized: !windowSize.isMaximized })}
-              className="inline-flex items-center gap-1 rounded-none border border-white/15 bg-white/[0.04] px-2.5 py-1 font-mono text-[11px] hover:bg-white/[0.08]"
+              onClick={() => {
+                soundEngine.playClick();
+                setActiveCategory(cat.id);
+              }}
+              className={`group relative flex shrink-0 items-center gap-2.5 px-3 py-2.5 text-left font-mono transition-colors md:w-full ${
+                active
+                  ? "font-semibold"
+                  : "opacity-70 hover:bg-white/[0.04] hover:opacity-100"
+              }`}
+              style={
+                active
+                  ? {
+                      backgroundColor: "rgba(var(--eco-primary-rgb), 0.16)",
+                      border: "1px solid var(--eco-primary)",
+                      color: "var(--eco-text)",
+                    }
+                  : {
+                      border: "1px solid rgba(255,255,255,0.06)",
+                    }
+              }
             >
-              {windowSize.isMaximized ? (
-                <>
-                  <Minimize2 className="h-3 w-3" /> Обычный размер
-                </>
-              ) : (
-                <>
-                  <Maximize2 className="h-3 w-3" /> 100% экрана
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={resetWindowSize}
-              title="Сбросить размеры к 940×640"
-              className="rounded-none border border-white/10 bg-white/[0.03] p-1 opacity-70 hover:opacity-100"
-            >
-              <RotateCcw className="h-3 w-3" />
-            </button>
-          </div>
-
-          {/* Window Sliders Grid */}
-          {!windowSize.isMaximized && (
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              <div className="glass-subtle p-3">
-                <div className="mb-1.5 flex justify-between font-mono text-xs">
-                  <span className="opacity-75">Ширина окна (Width)</span>
-                  <span className="font-semibold">{Math.round(windowSize.width)} px</span>
-                </div>
-                <input
-                  type="range"
-                  min={360}
-                  max={1920}
-                  step={10}
-                  value={windowSize.width}
-                  onChange={(e) => updateWindowSize({ width: Number(e.target.value) })}
-                  aria-label="Ширина окна"
-                  className="hud-range w-full"
-                />
-              </div>
-
-              <div className="glass-subtle p-3">
-                <div className="mb-1.5 flex justify-between font-mono text-xs">
-                  <span className="opacity-75">Высота окна (Height)</span>
-                  <span className="font-semibold">{Math.round(windowSize.height)} px</span>
-                </div>
-                <input
-                  type="range"
-                  min={260}
-                  max={1080}
-                  step={10}
-                  value={windowSize.height}
-                  onChange={(e) => updateWindowSize({ height: Number(e.target.value) })}
-                  aria-label="Высота окна"
-                  className="hud-range w-full"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* WINDOW COLORS (ЦВЕТ ОКНА) */}
-          <div className="space-y-2.5 pt-1">
-            <span className="font-mono text-[11px] uppercase tracking-wider opacity-60">
-              Цветовая настройка окон:
-            </span>
-
-            <div className="grid gap-2 sm:grid-cols-3">
-              {/* Surface Window Color */}
-              <div className="glass-subtle p-2.5">
-                <span className="block truncate font-mono text-[11px] opacity-80">
-                  Поверхность окна
-                </span>
-                <div className="mt-2 flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={theme.surface}
-                    onChange={(e) => setWindowSurfaceColor(e.target.value)}
-                    aria-label="Цвет поверхности окна"
-                    className="w-20 rounded-none border border-white/10 bg-black/40 px-2 py-1 text-center font-mono text-xs uppercase focus:border-white/30 focus:outline-none"
-                  />
-                  <label className="relative h-6 w-6 shrink-0 cursor-pointer border border-white/20">
-                    <span
-                      className="block h-full w-full"
-                      style={{ backgroundColor: theme.surface }}
-                    />
-                    <input
-                      type="color"
-                      value={theme.surface}
-                      onChange={(e) => setWindowSurfaceColor(e.target.value.toUpperCase())}
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                    />
-                  </label>
-                </div>
-                {/* Surface presets */}
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {WINDOW_SURFACE_PRESETS.slice(0, 5).map((p) => (
-                    <button
-                      key={p.hex}
-                      type="button"
-                      title={p.name}
-                      onClick={() => setWindowSurfaceColor(p.hex)}
-                      className="h-3 w-3 border border-white/20 transition-transform hover:scale-125"
-                      style={{ backgroundColor: p.hex }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Border / Corner Color */}
-              <div className="glass-subtle p-2.5">
-                <span className="block truncate font-mono text-[11px] opacity-80">
-                  Контур и уголки
-                </span>
-                <div className="mt-2 flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={theme.primary}
-                    onChange={(e) => setWindowBorderColor(e.target.value)}
-                    aria-label="Цвет контура окна"
-                    className="w-20 rounded-none border border-white/10 bg-black/40 px-2 py-1 text-center font-mono text-xs uppercase focus:border-white/30 focus:outline-none"
-                  />
-                  <label className="relative h-6 w-6 shrink-0 cursor-pointer border border-white/20">
-                    <span
-                      className="block h-full w-full"
-                      style={{ backgroundColor: theme.primary }}
-                    />
-                    <input
-                      type="color"
-                      value={theme.primary}
-                      onChange={(e) => setWindowBorderColor(e.target.value.toUpperCase())}
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* Text inside window */}
-              <div className="glass-subtle p-2.5">
-                <span className="block truncate font-mono text-[11px] opacity-80">
-                  Текст в окнах
-                </span>
-                <div className="mt-2 flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={theme.text}
-                    onChange={(e) => setWindowTextColor(e.target.value)}
-                    aria-label="Цвет текста"
-                    className="w-20 rounded-none border border-white/10 bg-black/40 px-2 py-1 text-center font-mono text-xs uppercase focus:border-white/30 focus:outline-none"
-                  />
-                  <label className="relative h-6 w-6 shrink-0 cursor-pointer border border-white/20">
-                    <span
-                      className="block h-full w-full"
-                      style={{ backgroundColor: theme.text }}
-                    />
-                    <input
-                      type="color"
-                      value={theme.text}
-                      onChange={(e) => setWindowTextColor(e.target.value.toUpperCase())}
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                    />
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* SECTION 2: EDGE FRAMES / MARGINS WITHOUT BACKGROUND (ПОЛЯ ПО КРАЯМ БЕЗ ФОНА) */}
-        <section className="space-y-3.5 border-b border-white/10 pb-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Crop className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-              <h3 className="font-mono text-xs font-semibold uppercase tracking-wider opacity-90">
-                Поля по краям экрана (без фона)
-              </h3>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Enable / Disable Toggle */}
-              <button
-                type="button"
-                onClick={() => updateFrameMargins({ enabled: !frameMargins.enabled })}
-                className={`rounded-none border px-3 py-1 font-mono text-xs transition-colors ${
-                  frameMargins.enabled
-                    ? "font-semibold"
-                    : "border-white/15 bg-white/[0.04] opacity-70 hover:opacity-100"
-                }`}
-                style={
-                  frameMargins.enabled
-                    ? {
-                        backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
-                        borderColor: "var(--eco-primary)",
-                        color: "var(--eco-primary)",
-                      }
-                    : undefined
-                }
-              >
-                {frameMargins.enabled ? "ВКЛЮЧЕНЫ" : "ОТКЛЮЧЕНЫ"}
-              </button>
-
-              <button
-                type="button"
-                onClick={resetFrameMargins}
-                title="Сбросить поля"
-                className="rounded-none border border-white/10 bg-white/[0.03] p-1 opacity-70 hover:opacity-100"
-              >
-                <RotateCcw className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-
-          <p className="font-mono text-[11px] leading-relaxed opacity-65">
-            Поля накладываются поверх фона по краям экрана, просто перекрывая часть подложки и не сжимая основной макет и окна. Каждая сторона настраивается отдельно.
-          </p>
-
-          {/* Color & Presets for Edge Fields */}
-          <div className="glass-subtle flex flex-wrap items-center justify-between gap-3 p-3">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs opacity-80">Цвет полей:</span>
-              <input
-                type="text"
-                value={frameMargins.color}
-                onChange={(e) => updateFrameMargins({ color: e.target.value })}
-                aria-label="Цвет полей"
-                className="w-20 rounded-none border border-white/10 bg-black/40 px-2 py-1 text-center font-mono text-xs uppercase focus:border-white/30 focus:outline-none"
-              />
-              <label className="relative h-6 w-6 shrink-0 cursor-pointer border border-white/20">
+              {active && (
                 <span
-                  className="block h-full w-full"
-                  style={{ backgroundColor: frameMargins.color }}
+                  className="absolute bottom-0 left-0 top-0 w-1"
+                  style={{ backgroundColor: "var(--eco-primary)" }}
                 />
-                <input
-                  type="color"
-                  value={frameMargins.color}
-                  onChange={(e) => updateFrameMargins({ color: e.target.value.toUpperCase() })}
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                />
-              </label>
-
-              {/* Quick color swatches */}
-              <div className="ml-2 flex items-center gap-1">
-                {["#000000", "#05070A", "#0A0D12", "#111827", "#1E1E1E"].map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => updateFrameMargins({ color: c })}
-                    className="h-3.5 w-3.5 border border-white/20 transition-transform hover:scale-125"
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Quick Margin Presets */}
-            <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
-              <span className="opacity-45">Пресеты:</span>
-              {[
-                { label: "Кино (32px)", t: 32, b: 32, l: 0, r: 0 },
-                { label: "Рамка (24/40)", t: 24, b: 24, l: 40, r: 40 },
-                { label: "Студия (36/60)", t: 36, b: 36, l: 60, r: 60 },
-              ].map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() =>
-                    updateFrameMargins({
-                      enabled: true,
-                      top: p.t,
-                      bottom: p.b,
-                      left: p.l,
-                      right: p.r,
-                    })
-                  }
-                  className="rounded-none border border-white/10 bg-white/[0.03] px-2 py-0.5 opacity-75 hover:border-white/25 hover:opacity-100"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 4-Side Sliders (Top, Bottom, Left, Right) */}
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="glass-subtle p-2.5">
-              <div className="mb-1 flex justify-between font-mono text-[11px]">
-                <span className="opacity-75">Верх (Top)</span>
-                <span className="font-semibold">{frameMargins.top} px</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={160}
-                step={2}
-                value={frameMargins.top}
-                onChange={(e) => handleMarginChange("top", Number(e.target.value))}
-                aria-label="Верхнее поле"
-                className="hud-range w-full"
-              />
-            </div>
-
-            <div className="glass-subtle p-2.5">
-              <div className="mb-1 flex justify-between font-mono text-[11px]">
-                <span className="opacity-75">Низ (Bottom)</span>
-                <span className="font-semibold">{frameMargins.bottom} px</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={160}
-                step={2}
-                value={frameMargins.bottom}
-                onChange={(e) => handleMarginChange("bottom", Number(e.target.value))}
-                aria-label="Нижнее поле"
-                className="hud-range w-full"
-              />
-            </div>
-
-            <div className="glass-subtle p-2.5">
-              <div className="mb-1 flex justify-between font-mono text-[11px]">
-                <span className="opacity-75">Лево (Left)</span>
-                <span className="font-semibold">{frameMargins.left} px</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={240}
-                step={4}
-                value={frameMargins.left}
-                onChange={(e) => handleMarginChange("left", Number(e.target.value))}
-                aria-label="Левое поле"
-                className="hud-range w-full"
-              />
-            </div>
-
-            <div className="glass-subtle p-2.5">
-              <div className="mb-1 flex justify-between font-mono text-[11px]">
-                <span className="opacity-75">Право (Right)</span>
-                <span className="font-semibold">{frameMargins.right} px</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={240}
-                step={4}
-                value={frameMargins.right}
-                onChange={(e) => handleMarginChange("right", Number(e.target.value))}
-                aria-label="Правое поле"
-                className="hud-range w-full"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* SECTION 3: BACKDROP MODE & SOLID BACKGROUND COLOR CUSTOMIZATION */}
-        <section className="space-y-3.5 border-b border-white/10 pb-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Film className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-              <h3 className="font-mono text-xs font-semibold uppercase tracking-wider opacity-90">
-                Фоновый режим и цвет фона
-              </h3>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Video vs Solid Color Switch */}
-              <div className="flex border border-white/10 bg-black/40 p-0.5 font-mono text-xs">
-                <button
-                  type="button"
-                  onClick={() => setBackdropMode("video")}
-                  className={`px-3 py-1 font-medium transition-colors ${
-                    backdropMode === "video"
-                      ? "font-semibold"
-                      : "opacity-60 hover:opacity-100"
-                  }`}
-                  style={
-                    backdropMode === "video"
-                      ? {
-                          backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
-                          color: "var(--eco-primary)",
-                        }
-                      : undefined
-                  }
-                >
-                  Видеофон
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBackdropMode("color")}
-                  className={`px-3 py-1 font-medium transition-colors ${
-                    backdropMode === "color"
-                      ? "font-semibold"
-                      : "opacity-60 hover:opacity-100"
-                  }`}
-                  style={
-                    backdropMode === "color"
-                      ? {
-                          backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
-                          color: "var(--eco-primary)",
-                        }
-                      : undefined
-                  }
-                >
-                  Сплошной цвет
-                </button>
-              </div>
-
-              {/* Loop Controls */}
-              {backdropMode === "video" && (
-                <>
-                  <div className="flex border border-white/10 bg-black/40 p-0.5 font-mono text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setLoopVideo(false)}
-                      className={`px-2 py-0.5 transition-colors ${
-                        !loopVideo ? "font-semibold text-white" : "opacity-50"
-                      }`}
-                      style={!loopVideo ? { backgroundColor: "rgba(255,255,255,0.12)" } : undefined}
-                    >
-                      Стоп
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLoopVideo(true)}
-                      className={`px-2 py-0.5 transition-colors ${
-                        loopVideo ? "font-semibold text-white" : "opacity-50"
-                      }`}
-                      style={loopVideo ? { backgroundColor: "rgba(255,255,255,0.12)" } : undefined}
-                    >
-                      Цикл
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={replayVideo}
-                    title="Перезапустить видео"
-                    className="inline-flex items-center gap-1 border border-white/15 bg-white/[0.04] px-2 py-1 font-mono text-xs hover:bg-white/[0.08]"
-                  >
-                    <Play className="h-3 w-3" style={{ color: "var(--eco-primary)" }} />
-                    Повтор
-                  </button>
-                </>
               )}
-            </div>
-          </div>
+              <Icon
+                className="h-4 w-4 shrink-0"
+                style={{
+                  color: active ? "var(--eco-primary)" : "currentColor",
+                }}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="truncate text-xs">{cat.label}</span>
+                  <span className="text-[9px] opacity-45">{cat.code}</span>
+                </div>
+                <div className="hidden truncate text-[10px] opacity-55 md:block">
+                  {cat.subtitle}
+                </div>
+              </div>
+            </button>
+          );
+        })}
 
-          {/* DEDICATED SOLID COLOR PICKER (WHEN SOLID COLOR IS SELECTED) */}
-          {backdropMode === "color" && (
-            <div className="glass-subtle space-y-2.5 p-3.5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="font-mono text-xs font-medium opacity-90">
-                    Цвет сплошного фона:
-                  </span>
+        <div className="mt-auto hidden pt-3 md:block">
+          <button
+            type="button"
+            onClick={resetActiveTheme}
+            className="flex w-full items-center justify-center gap-1.5 border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[11px] opacity-75 transition-opacity hover:border-white/25 hover:opacity-100"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span>Сбросить текущую тему</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* RIGHT CONTENT PANE: OPENS ONLY THE SELECTED CATEGORY */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {/* =========================================================
+            CATEGORY 01: ТЕМЫ И ПАЛИТРА (Тёмная, Белая, Серая + цвета)
+           ========================================================= */}
+        {activeCategory === "themes" && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+              <div>
+                <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                  01 // Цветовые темы и палитра окон
+                </h2>
+                <p className="mt-0.5 font-mono text-xs opacity-65">
+                  Быстрое переключение между Тёмной, Белой, Серой и студийными темами
+                </p>
+              </div>
+              {!addingTheme ? (
+                <button
+                  type="button"
+                  onClick={() => setAddingTheme(true)}
+                  className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.04] px-3 py-1.5 font-mono text-xs hover:border-white/30"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Создать свою тему</span>
+                </button>
+              ) : (
+                <form onSubmit={handleCreateTheme} className="flex items-center gap-1.5">
                   <input
                     type="text"
-                    value={solidBgColor}
-                    onChange={(e) => setSolidBgColor(e.target.value)}
-                    aria-label="Цвет сплошного фона HEX"
-                    className="w-24 border border-white/15 bg-black/50 px-2 py-1 text-center font-mono text-xs uppercase focus:border-white/35 focus:outline-none"
+                    value={newThemeName}
+                    onChange={(e) => setNewThemeName(e.target.value)}
+                    placeholder="Название темы..."
+                    className="border border-white/20 bg-black/40 px-2.5 py-1 font-mono text-xs focus:outline-none"
                   />
-                  <label className="relative h-7 w-7 shrink-0 cursor-pointer border border-white/25">
-                    <span
-                      className="block h-full w-full"
-                      style={{ backgroundColor: solidBgColor }}
-                    />
-                    <input
-                      type="color"
-                      value={solidBgColor}
-                      onChange={(e) => setSolidBgColor(e.target.value.toUpperCase())}
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                    />
-                  </label>
-                </div>
+                  <button
+                    type="submit"
+                    className="border px-2.5 py-1 font-mono text-xs font-semibold"
+                    style={{
+                      borderColor: "var(--eco-primary)",
+                      color: "var(--eco-primary)",
+                    }}
+                  >
+                    Сохранить
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddingTheme(false)}
+                    className="border border-white/10 px-2 py-1 font-mono text-xs opacity-65"
+                  >
+                    Отмена
+                  </button>
+                </form>
+              )}
+            </div>
 
-                {/* Quick Solid Presets */}
-                <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
-                  <span className="opacity-50">Палитра:</span>
-                  {SOLID_BG_PRESETS.map((p) => (
+            {/* Theme Cards Grid */}
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {themes.map((t) => {
+                const active = t.id === activeThemeId;
+                return (
+                  <SpotlightCard key={t.id}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => selectTheme(t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          selectTheme(t.id);
+                        }
+                      }}
+                      className="flex cursor-pointer items-center justify-between p-3 transition-colors"
+                      style={
+                        active
+                          ? {
+                              boxShadow: "inset 0 0 0 1px var(--eco-primary)",
+                              backgroundColor: "rgba(var(--eco-primary-rgb), 0.1)",
+                            }
+                          : undefined
+                      }
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex shrink-0 -space-x-1">
+                          <span
+                            className="h-4 w-4 border border-white/30"
+                            style={{ backgroundColor: t.colors.surface }}
+                            title="Поверхность окон"
+                          />
+                          <span
+                            className="h-4 w-4 border border-white/30"
+                            style={{ backgroundColor: t.colors.primary }}
+                            title="Акцент и контур"
+                          />
+                          <span
+                            className="h-4 w-4 border border-white/30"
+                            style={{ backgroundColor: t.colors.text }}
+                            title="Текст"
+                          />
+                        </div>
+                        <span className="truncate font-mono text-xs font-semibold">
+                          {t.name}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {active && (
+                          <Check
+                            className="h-3.5 w-3.5"
+                            style={{ color: "var(--eco-primary)" }}
+                          />
+                        )}
+                        {t.isCustom && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteCustomTheme(t.id);
+                            }}
+                            className="p-1 opacity-55 hover:text-rose-400 hover:opacity-100"
+                            title="Удалить тему"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </SpotlightCard>
+                );
+              })}
+            </div>
+
+            {/* Quick Window Surface Presets */}
+            <div className="glass-subtle space-y-2.5 p-3.5 font-mono text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold">Быстрый цвет поверхности окон:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {WINDOW_SURFACE_PRESETS.map((p) => (
                     <button
                       key={p.hex}
                       type="button"
-                      onClick={() => setSolidBgColor(p.hex)}
-                      title={p.name}
-                      className="inline-flex items-center gap-1 border border-white/10 bg-white/[0.03] px-2 py-0.5 opacity-80 transition-opacity hover:opacity-100"
+                      onClick={() => setWindowSurfaceColor(p.hex)}
+                      className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.04] px-2.5 py-1 text-[11px] hover:border-white/35"
                     >
                       <span
                         className="h-2.5 w-2.5 border border-white/30"
@@ -760,503 +563,1092 @@ export default function SettingsPanel() {
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Video Presets Grid (When Video is active) */}
-          {backdropMode === "video" && (
-            <div className="space-y-3">
-              {/* 4K ULTRA-CLEAR VIDEO QUALITY & SCALING CONTROLS */}
-              <div className="glass-subtle space-y-3 p-3 font-mono text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-white">4K ULTRA HD РЕЖИМ</span>
-                    <span className="border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] text-emerald-400">
-                      DIRECT 1:1
+            {/* 5-Channel Color Pickers */}
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+              {COLOR_FIELDS.map((f) => {
+                const value = theme[f.key];
+                return (
+                  <div
+                    key={f.key}
+                    title={f.tooltip}
+                    className="glass-subtle flex flex-col justify-between gap-2 p-3"
+                  >
+                    <span className="font-mono text-[11px] opacity-80">
+                      {f.label}
                     </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="opacity-70">Без затемняющих градиентов:</span>
-                    <button
-                      type="button"
-                      onClick={() => updateVideoQuality({ clearMode: !videoQuality.clearMode })}
-                      className={`border px-2.5 py-0.5 text-xs transition-colors ${
-                        videoQuality.clearMode
-                          ? "border-emerald-500/60 bg-emerald-500/20 font-semibold text-emerald-300"
-                          : "border-white/10 bg-white/[0.03] opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      {videoQuality.clearMode ? "ВКЛ (КРИСТАЛЬНАЯ ЧЁТКОСТЬ)" : "ВЫКЛ (ЗАТЕМНЕНИЕ)"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <div className="mb-1 flex justify-between text-[11px]">
-                      <span className="opacity-70">Масштабирование кадра:</span>
-                      <span className="font-semibold" style={{ color: "var(--eco-primary)" }}>
-                        {videoQuality.fit === "cover"
-                          ? "Заполнение (Cover)"
-                          : videoQuality.fit === "contain"
-                          ? "Без кадрирования (1:1)"
-                          : "Растянуть"}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-semibold uppercase">
+                        {value}
                       </span>
-                    </div>
-                    <div className="flex border border-white/10 bg-black/40 p-0.5 text-[11px]">
-                      {[
-                        { id: "cover", label: "Заполнить" },
-                        { id: "contain", label: "Без обрезки (1:1)" },
-                        { id: "fill", label: "Растянуть" },
-                      ].map((f) => (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => updateVideoQuality({ fit: f.id as any })}
-                          className={`flex-1 py-1 transition-colors ${
-                            videoQuality.fit === f.id
-                              ? "bg-white/15 font-semibold text-white"
-                              : "opacity-60 hover:opacity-100"
-                          }`}
-                        >
-                          {f.label}
-                        </button>
-                      ))}
+                      <label className="relative h-6 w-9 cursor-pointer border border-white/25">
+                        <span
+                          className="block h-full w-full"
+                          style={{ backgroundColor: value }}
+                        />
+                        <input
+                          type="color"
+                          value={value}
+                          onChange={(e) => {
+                            const hex = e.target.value;
+                            if (f.key === "surface") setWindowSurfaceColor(hex);
+                            else if (f.key === "primary") setWindowBorderColor(hex);
+                            else if (f.key === "text") setWindowTextColor(hex);
+                            else updateActiveThemeColors({ [f.key]: hex });
+                          }}
+                          className="absolute inset-0 cursor-pointer opacity-0"
+                        />
+                      </label>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-                  <div>
-                    <div className="mb-1 flex justify-between text-[11px]">
-                      <span className="opacity-70">Яркость видео:</span>
-                      <span className="font-semibold">{Math.round(videoQuality.brightness * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0.6}
-                      max={1.4}
-                      step={0.05}
-                      value={videoQuality.brightness}
-                      onChange={(e) => updateVideoQuality({ brightness: Number(e.target.value) })}
-                      className="hud-range w-full"
-                    />
-                  </div>
-                </div>
+        {/* =========================================================
+            CATEGORY 02: ФОН И ВИДЕО (Видеофон, Сетка во весь экран, Цвет)
+           ========================================================= */}
+        {activeCategory === "backdrop" && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+              <div>
+                <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                  02 // Режим фона и 4K Видеосцена
+                </h2>
+                <p className="mt-0.5 font-mono text-xs opacity-65">
+                  Управление видеофоном, полноэкранной архитектурной сеткой и подложкой
+                </p>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-3">
-                {videos.map((v) => {
-                  const active = v.id === activeVideoId;
+              <div className="flex border border-white/15 bg-black/40 p-0.5 font-mono text-xs">
+                {(
+                  [
+                    { id: "video", label: "Видеофон" },
+                    { id: "ether", label: "Сетка (без видео)" },
+                    { id: "color", label: "Сплошной цвет" },
+                  ] as const
+                ).map((m) => {
+                  const active = backdropMode === m.id;
                   return (
-                    <SpotlightCard key={v.id}>
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        title={v.subtitle}
-                        onClick={() => selectVideo(v.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            selectVideo(v.id);
-                          }
-                        }}
-                        className="flex h-full cursor-pointer flex-col justify-between p-3 text-left transition-colors"
-                        style={
-                          active
-                            ? {
-                                boxShadow: "inset 0 0 0 1px var(--eco-primary)",
-                                backgroundColor: "rgba(var(--eco-primary-rgb), 0.08)",
-                              }
-                            : undefined
-                        }
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span
-                            className="px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider"
-                            style={{
-                              backgroundColor: active
-                                ? "rgba(var(--eco-primary-rgb), 0.2)"
-                                : "rgba(255,255,255,0.06)",
-                              color: active ? "var(--eco-primary)" : undefined,
-                              border: active
-                                ? "1px solid rgba(var(--eco-primary-rgb), 0.45)"
-                                : "1px solid rgba(255,255,255,0.08)",
-                            }}
-                          >
-                            {active ? "АКТИВНО" : v.badge}
-                          </span>
-                          {v.isCustom && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeCustomVideo(v.id);
-                              }}
-                              title="Удалить видео"
-                              className="p-1 opacity-60 hover:bg-rose-500/20 hover:text-rose-300 hover:opacity-100"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs font-semibold leading-snug">
-                          {v.title}
-                        </p>
-                      </div>
-                    </SpotlightCard>
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setBackdropMode(m.id)}
+                      className={`px-3 py-1.5 transition-colors ${
+                        active
+                          ? "font-semibold"
+                          : "opacity-65 hover:opacity-100"
+                      }`}
+                      style={
+                        active
+                          ? {
+                              backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
+                              color: "var(--eco-primary)",
+                            }
+                          : undefined
+                      }
+                    >
+                      {m.label}
+                    </button>
                   );
                 })}
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="video/mp4,video/webm,video/quicktime,video/*"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  disabled={uploading}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex flex-1 items-center justify-center gap-2 border border-dashed border-white/20 bg-white/[0.03] px-4 py-2 font-mono text-xs font-medium transition-colors hover:border-white/40 hover:bg-white/[0.06]"
-                >
-                  <Upload className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-                  {uploading ? "Загрузка..." : "Загрузить видеофайл (.mp4 / .webm)"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUrlFormOpen((o) => !o)}
-                  className="inline-flex items-center justify-center gap-1.5 border border-white/15 bg-white/[0.03] px-3.5 py-2 font-mono text-xs font-medium transition-colors hover:bg-white/[0.06]"
-                >
-                  <Link2 className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-                  URL ссылка
-                </button>
-              </div>
-
-              {urlFormOpen && (
-                <form
-                  onSubmit={handleUrlSubmit}
-                  className="glass-subtle flex flex-wrap items-center gap-2 p-2.5"
-                >
-                  <input
-                    type="text"
-                    placeholder="Название..."
-                    value={urlTitle}
-                    onChange={(e) => setUrlTitle(e.target.value)}
-                    className="w-40 border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-xs focus:border-white/25 focus:outline-none"
-                  />
-                  <input
-                    type="url"
-                    required
-                    placeholder="https://example.com/video.mp4"
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    className="min-w-[180px] flex-1 border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-xs focus:border-white/25 focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    className="border px-3.5 py-1.5 font-mono text-xs font-semibold"
-                    style={{
-                      backgroundColor: "rgba(var(--eco-primary-rgb), 0.16)",
-                      borderColor: "var(--eco-primary)",
-                    }}
-                  >
-                    Добавить
-                  </button>
-                </form>
-              )}
             </div>
-          )}
-        </section>
 
-        {/* SECTION 4: THEMES & SYSTEM COLOR MATRIX */}
-        <section className="space-y-3.5 border-b border-white/10 pb-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Palette className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-              <h3 className="font-mono text-xs font-semibold uppercase tracking-wider opacity-90">
-                Темы оформления
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAddingTheme((v) => !v)}
-              className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.04] px-2.5 py-1 font-mono text-xs font-medium hover:bg-white/[0.08]"
-            >
-              <Plus className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-              Сохранить свою тему
-            </button>
-          </div>
-
-          {addingTheme && (
-            <form onSubmit={handleCreateTheme} className="glass-subtle flex items-center gap-2 p-2.5">
-              <input
-                type="text"
-                required
-                placeholder="Название схемы..."
-                value={newThemeName}
-                onChange={(e) => setNewThemeName(e.target.value)}
-                className="min-w-0 flex-1 border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-xs focus:border-white/25 focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="border px-3.5 py-1.5 font-mono text-xs font-semibold"
-                style={{
-                  backgroundColor: "rgba(var(--eco-primary-rgb), 0.16)",
-                  borderColor: "var(--eco-primary)",
-                }}
-              >
-                Сохранить
-              </button>
-            </form>
-          )}
-
-          {/* Theme List Grid */}
-          <div className="grid gap-2 sm:grid-cols-3">
-            {themes.map((item) => {
-              const isCurrent = item.id === activeThemeId;
-              return (
-                <div
-                  key={item.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => selectTheme(item.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      selectTheme(item.id);
-                    }
-                  }}
-                  className="glass-subtle flex cursor-pointer items-center justify-between gap-2 p-2.5 text-left transition-colors hover:border-white/25"
-                  style={
-                    isCurrent
-                      ? {
-                          borderColor: "var(--eco-primary)",
-                          backgroundColor: "rgba(var(--eco-primary-rgb), 0.08)",
-                        }
-                      : undefined
-                  }
-                >
-                  <span className="truncate font-mono text-xs font-medium">
-                    {item.name}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <span
-                      className="h-3 w-3 border border-white/20"
-                      style={{ backgroundColor: item.colors.primary }}
-                    />
-                    <span
-                      className="h-3 w-3 border border-white/20"
-                      style={{ backgroundColor: item.colors.surface }}
-                    />
-                    <span
-                      className="h-3 w-3 border border-white/20"
-                      style={{ backgroundColor: item.colors.background }}
-                    />
-                    {item.isCustom && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteCustomTheme(item.id);
-                        }}
-                        title="Удалить тему"
-                        className="ml-1 p-0.5 opacity-60 hover:text-rose-400 hover:opacity-100"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    )}
-                    {isCurrent && !item.isCustom && (
-                      <Check className="ml-1 h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-                    )}
+            {backdropMode !== "video" && (
+              <div className="glass-subtle space-y-3 p-4 font-mono text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">
+                      Цвет фона экрана ({backdropMode === "ether" ? "Сетка до самого низа экрана" : "Сплошной тон"}):
+                    </div>
+                    <div className="text-[11px] opacity-65">
+                      Сетка автоматически растягивается на 100% высоты экрана без обрезки снизу
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* All Theme Colors Fields */}
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {COLOR_FIELDS.map((field) => {
-              const value = theme[field.key];
-              return (
-                <div
-                  key={field.key}
-                  title={field.tooltip}
-                  className="glass-subtle flex items-center justify-between gap-2 p-2.5"
-                >
-                  <span className="truncate font-mono text-[11px] opacity-85">
-                    {field.label}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={value}
-                      onChange={(e) =>
-                        updateActiveThemeColors({ [field.key]: e.target.value })
-                      }
-                      aria-label={`${field.label} HEX`}
-                      className="w-20 border border-white/10 bg-black/35 px-2 py-1 text-center font-mono text-xs uppercase focus:border-white/25 focus:outline-none"
-                    />
-                    <label className="relative h-6 w-6 shrink-0 cursor-pointer border border-white/20">
+                  <div className="flex items-center gap-2">
+                    <span className="uppercase">{solidBgColor}</span>
+                    <label className="relative h-7 w-12 cursor-pointer border border-white/25">
                       <span
                         className="block h-full w-full"
-                        style={{ backgroundColor: value }}
+                        style={{ backgroundColor: solidBgColor }}
                       />
                       <input
                         type="color"
-                        value={
-                          /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#CBD5E1"
-                        }
-                        onChange={(e) =>
-                          updateActiveThemeColors({
-                            [field.key]: e.target.value.toUpperCase(),
-                          })
-                        }
-                        aria-label={field.label}
+                        value={solidBgColor}
+                        onChange={(e) => setSolidBgColor(e.target.value)}
                         className="absolute inset-0 cursor-pointer opacity-0"
                       />
                     </label>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </section>
 
-        {/* SECTION 5: LOWER INSTRUMENT FIELD CONFIG */}
-        <section className="space-y-3.5 border-b border-white/10 pb-5">
-          <div className="flex items-center gap-2">
-            <Activity className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-            <h3 className="font-mono text-xs font-semibold uppercase tracking-wider opacity-90">
-              Нижний информационный блок
-            </h3>
-          </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {SOLID_BG_PRESETS.map((p) => (
+                    <button
+                      key={p.hex}
+                      type="button"
+                      onClick={() => setSolidBgColor(p.hex)}
+                      className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.04] px-2.5 py-1 text-[11px] hover:border-white/35"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 border border-white/30"
+                        style={{ backgroundColor: p.hex }}
+                      />
+                      <span>{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-          <div className="flex flex-wrap gap-1.5">
-            {ETHER_MODES.map((m) => {
-              const active = etherConfig.displayMode === m.id;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  title={m.tooltip}
-                  onClick={() => updateEtherConfig({ displayMode: m.id })}
-                  className={`border px-3 py-1 font-mono text-xs font-medium transition-colors ${
-                    active
-                      ? "font-semibold"
-                      : "border-white/10 bg-white/[0.03] opacity-75 hover:border-white/20 hover:opacity-100"
-                  }`}
-                  style={
-                    active
-                      ? {
-                          backgroundColor: "rgba(var(--eco-primary-rgb), 0.16)",
-                          borderColor: "var(--eco-primary)",
-                          color: "var(--eco-primary)",
+            {backdropMode === "video" && (
+              <div className="space-y-4">
+                <div className="glass-subtle space-y-3 p-3.5 font-mono text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+                    <div>
+                      <span className="font-semibold">Подстройка высоты страницы под видео:</span>
+                      <p className="text-[10px] opacity-60">
+                        Страница автоматически подстраивается под любое видео с вертикальной прокруткой
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateVideoQuality({
+                          ultrawideScroll: !(videoQuality.ultrawideScroll ?? true),
+                        })
+                      }
+                      className={`border px-3 py-1 text-xs font-semibold transition-colors ${
+                        (videoQuality.ultrawideScroll ?? true)
+                          ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300"
+                          : "border-white/15 bg-white/[0.04] opacity-70"
+                      }`}
+                    >
+                      {(videoQuality.ultrawideScroll ?? true)
+                        ? "ВКЛ (АДАПТИВНАЯ ВЫСОТА + СКРОЛЛ)"
+                        : "ФИКСИРОВАННЫЙ ЭКРАН (100VH)"}
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+                    <span>Кристальная чёткость (без затемнения):</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateVideoQuality({ clearMode: !videoQuality.clearMode })
+                      }
+                      className={`border px-3 py-1 text-xs font-semibold ${
+                        videoQuality.clearMode
+                          ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300"
+                          : "border-white/15 bg-white/[0.04] opacity-70"
+                      }`}
+                    >
+                      {videoQuality.clearMode ? "ВКЛ (100% ЧЁТКОСТЬ)" : "ВЫКЛ (ВИНЬЕТКА)"}
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <div className="mb-1 flex justify-between text-[11px]">
+                        <span className="opacity-75">Выравнивание кадра:</span>
+                      </div>
+                      <div className="flex border border-white/10 bg-black/40 p-0.5 text-[11px]">
+                        {[
+                          { id: "top", label: "Верх" },
+                          { id: "center", label: "Центр" },
+                          { id: "bottom", label: "Низ" },
+                        ].map((pos) => {
+                          const isSelected =
+                            (videoQuality.position || "center") === pos.id;
+                          return (
+                            <button
+                              key={pos.id}
+                              type="button"
+                              onClick={() =>
+                                updateVideoQuality({ position: pos.id as any })
+                              }
+                              className={`flex-1 py-1 ${
+                                isSelected
+                                  ? "bg-white/15 font-semibold"
+                                  : "opacity-60 hover:opacity-100"
+                              }`}
+                            >
+                              {pos.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-1 flex justify-between text-[11px]">
+                        <span className="opacity-75">Яркость видео:</span>
+                        <span className="font-semibold">
+                          {Math.round(videoQuality.brightness * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.6}
+                        max={1.4}
+                        step={0.05}
+                        value={videoQuality.brightness}
+                        onChange={(e) =>
+                          updateVideoQuality({ brightness: Number(e.target.value) })
                         }
-                      : undefined
-                  }
+                        className="hud-range w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Video Presets & Upload */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-mono text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setLoopVideo(!loopVideo)}
+                      className={`border px-3 py-1 ${
+                        loopVideo
+                          ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                          : "border-white/15 bg-white/[0.04]"
+                      }`}
+                    >
+                      Повтор: {loopVideo ? "ВКЛ" : "ВЫКЛ"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={replayVideo}
+                      className="inline-flex items-center gap-1 border border-white/15 bg-white/[0.04] px-3 py-1 hover:border-white/30"
+                    >
+                      <Play className="h-3 w-3" /> Перезапустить
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 font-mono text-xs">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="inline-flex items-center gap-1.5 border px-3 py-1 font-semibold"
+                      style={{
+                        borderColor: "var(--eco-primary)",
+                        color: "var(--eco-primary)",
+                      }}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>{uploading ? "Загрузка..." : "Загрузить видеофайл"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUrlFormOpen((v) => !v)}
+                      className="inline-flex items-center gap-1 border border-white/15 bg-white/[0.04] px-2.5 py-1"
+                    >
+                      <Link2 className="h-3.5 w-3.5" /> По ссылке
+                    </button>
+                  </div>
+                </div>
+
+                {urlFormOpen && (
+                  <form
+                    onSubmit={handleUrlSubmit}
+                    className="glass-subtle grid gap-2 p-3 sm:grid-cols-3"
+                  >
+                    <input
+                      type="text"
+                      value={urlTitle}
+                      onChange={(e) => setUrlTitle(e.target.value)}
+                      placeholder="Название сцены"
+                      className="border border-white/15 bg-black/40 px-2.5 py-1.5 font-mono text-xs"
+                    />
+                    <input
+                      type="url"
+                      required
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      placeholder="https://.../video.mp4"
+                      className="border border-white/15 bg-black/40 px-2.5 py-1.5 font-mono text-xs"
+                    />
+                    <button
+                      type="submit"
+                      className="border px-3 py-1.5 font-mono text-xs font-semibold"
+                      style={{
+                        borderColor: "var(--eco-primary)",
+                        color: "var(--eco-primary)",
+                      }}
+                    >
+                      Добавить видео
+                    </button>
+                  </form>
+                )}
+
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  {videos.map((v) => {
+                    const active = v.id === activeVideoId;
+                    return (
+                      <SpotlightCard key={v.id}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => selectVideo(v.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              selectVideo(v.id);
+                            }
+                          }}
+                          className="flex h-full cursor-pointer flex-col justify-between p-3 text-left"
+                          style={
+                            active
+                              ? {
+                                  boxShadow: "inset 0 0 0 1px var(--eco-primary)",
+                                  backgroundColor:
+                                    "rgba(var(--eco-primary-rgb), 0.1)",
+                                }
+                              : undefined
+                          }
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="border border-white/15 px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                              {active ? "АКТИВНО" : v.badge}
+                            </span>
+                            {v.isCustom && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeCustomVideo(v.id);
+                                }}
+                                className="p-1 opacity-60 hover:text-rose-400 hover:opacity-100"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-2">
+                            <div className="font-mono text-xs font-semibold">
+                              {v.title}
+                            </div>
+                            <div className="font-mono text-[10px] opacity-60">
+                              {v.subtitle}
+                            </div>
+                          </div>
+                        </div>
+                      </SpotlightCard>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =========================================================
+            CATEGORY 03: 3D-ОБЪЕКТ (Форма, размер, скорость, перетаскивание ЛКМ)
+           ========================================================= */}
+        {activeCategory === "hologram" && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+              <div>
+                <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                  03 // Интерактивный 3D-Объект рабочего стола
+                </h2>
+                <p className="mt-0.5 font-mono text-xs opacity-65">
+                  Чтобы передвинуть 3D-объект, просто зажмите на нём ЛКМ и перетащите в любое место экрана
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 font-mono text-xs">
+                <button
+                  type="button"
+                  onClick={resetHologramPosition}
+                  className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.04] px-3 py-1.5 hover:border-white/35"
                 >
-                  {m.label}
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Вернуть в центр</span>
                 </button>
-              );
-            })}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => setHologramEnabled(!hologramEnabled)}
+                  className={`border px-3.5 py-1.5 font-semibold ${
+                    hologramEnabled
+                      ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300"
+                      : "border-white/15 bg-white/[0.04] opacity-70"
+                  }`}
+                >
+                  {hologramEnabled ? "3D ОБЪЕКТ: ВКЛ" : "3D ОБЪЕКТ: ВЫКЛ"}
+                </button>
+              </div>
+            </div>
 
-          {etherConfig.displayMode === "custom" && (
-            <div className="grid gap-2 sm:grid-cols-2">
+            {/* 3D Shape Selector */}
+            <div className="space-y-2">
+              <div className="font-mono text-xs font-semibold uppercase opacity-80">
+                Геометрия 3D-объекта:
+              </div>
+              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {HOLOGRAM_SHAPES.map((s) => {
+                  const active = hologramConfig.shape === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playClick();
+                        updateHologramConfig({ shape: s.id });
+                      }}
+                      className="glass-subtle flex flex-col items-start justify-between gap-1 p-3 text-left font-mono transition-colors"
+                      style={
+                        active
+                          ? {
+                              borderColor: "var(--eco-primary)",
+                              backgroundColor: "rgba(var(--eco-primary-rgb), 0.14)",
+                            }
+                          : undefined
+                      }
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span className="text-xs font-bold">{s.label}</span>
+                        {active && (
+                          <Check
+                            className="h-3.5 w-3.5"
+                            style={{ color: "var(--eco-primary)" }}
+                          />
+                        )}
+                      </div>
+                      <span className="text-[10px] opacity-65">{s.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sliders: Scale, Speed, Opacity */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="glass-subtle p-3.5 font-mono text-xs">
+                <div className="mb-2 flex justify-between">
+                  <span className="opacity-75">Размер 3D-объекта</span>
+                  <span className="font-semibold tabular-nums">
+                    {Math.round(hologramConfig.scale * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={1.8}
+                  step={0.05}
+                  value={hologramConfig.scale}
+                  onChange={(e) =>
+                    updateHologramConfig({ scale: Number(e.target.value) })
+                  }
+                  className="hud-range w-full"
+                />
+              </div>
+
+              <div className="glass-subtle p-3.5 font-mono text-xs">
+                <div className="mb-2 flex justify-between">
+                  <span className="opacity-75">Скорость вращения</span>
+                  <span className="font-semibold tabular-nums">
+                    {hologramConfig.speed.toFixed(1)}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={3.0}
+                  step={0.1}
+                  value={hologramConfig.speed}
+                  onChange={(e) =>
+                    updateHologramConfig({ speed: Number(e.target.value) })
+                  }
+                  className="hud-range w-full"
+                />
+              </div>
+
+              <div className="glass-subtle p-3.5 font-mono text-xs">
+                <div className="mb-2 flex justify-between">
+                  <span className="opacity-75">Яркость голограммы</span>
+                  <span className="font-semibold tabular-nums">
+                    {Math.round(hologramConfig.opacity * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.2}
+                  max={1.0}
+                  step={0.05}
+                  value={hologramConfig.opacity}
+                  onChange={(e) =>
+                    updateHologramConfig({ opacity: Number(e.target.value) })
+                  }
+                  className="hud-range w-full"
+                />
+              </div>
+            </div>
+
+            {/* Rings & Nodes Toggles */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="glass-subtle flex items-center justify-between p-3.5 font-mono text-xs">
+                <div>
+                  <div className="font-semibold">Гироскопические кольца орбиты</div>
+                  <div className="text-[10px] opacity-60">
+                    Внешние телеметрические кольца вокруг 3D-ядра
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateHologramConfig({ showRings: !hologramConfig.showRings })
+                  }
+                  className={`border px-3 py-1 font-semibold ${
+                    hologramConfig.showRings
+                      ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300"
+                      : "border-white/15 bg-white/[0.04] opacity-65"
+                  }`}
+                >
+                  {hologramConfig.showRings ? "ВКЛ" : "ВЫКЛ"}
+                </button>
+              </div>
+
+              <div className="glass-subtle flex items-center justify-between p-3.5 font-mono text-xs">
+                <div>
+                  <div className="font-semibold">Узловые точки вершин</div>
+                  <div className="text-[10px] opacity-60">
+                    Подсветка вершин каркасной сетки
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateHologramConfig({ showNodes: !hologramConfig.showNodes })
+                  }
+                  className={`border px-3 py-1 font-semibold ${
+                    hologramConfig.showNodes
+                      ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300"
+                      : "border-white/15 bg-white/[0.04] opacity-65"
+                  }`}
+                >
+                  {hologramConfig.showNodes ? "ВКЛ" : "ВЫКЛ"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================
+            CATEGORY 04: МУЗЫКА И РАДИО (Папка C:\Users\dakos\Downloads\MediaHuman\Music)
+           ========================================================= */}
+        {activeCategory === "audio" && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+              <div>
+                <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                  04 // Моя музыка и Радиоплеер
+                </h2>
+                <p className="mt-0.5 font-mono text-xs opacity-65">
+                  Прямое воспроизведение треков из вашей папки без копирования и дублирования файлов ({radioState.tracks.length} треков найдено)
+                </p>
+              </div>
+            </div>
+
+            {/* Folder Path & Rescan Bar */}
+            <div className="glass-subtle flex flex-wrap items-center gap-2 p-3 font-mono text-xs">
+              <FolderOpen
+                className="h-4 w-4 shrink-0"
+                style={{ color: "var(--eco-primary)" }}
+              />
               <input
                 type="text"
-                value={etherConfig.customTitle}
-                onChange={(e) =>
-                  updateEtherConfig({ customTitle: e.target.value })
-                }
-                placeholder="Заголовок..."
-                className="border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-xs focus:border-white/25 focus:outline-none"
+                value={musicDirInput}
+                onChange={(e) => setMusicDirInput(e.target.value)}
+                placeholder="C:\Users\dakos\Downloads\MediaHuman\Music"
+                className="min-w-[240px] flex-1 border border-white/15 bg-black/40 px-2.5 py-1.5 text-xs focus:outline-none"
               />
-              <input
-                type="text"
-                value={etherConfig.customSubtitle}
-                onChange={(e) =>
-                  updateEtherConfig({ customSubtitle: e.target.value })
-                }
-                placeholder="Подзаголовок..."
-                className="border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-xs focus:border-white/25 focus:outline-none"
-              />
+              <button
+                type="button"
+                onClick={() => soundEngine.loadLocalTracks(musicDirInput)}
+                className="inline-flex items-center gap-1.5 border px-3 py-1.5 font-semibold"
+                style={{
+                  borderColor: "var(--eco-primary)",
+                  color: "var(--eco-primary)",
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Сканировать папку</span>
+              </button>
             </div>
-          )}
-        </section>
 
-        {/* SECTION 6: GLASS & VIGNETTE SLIDERS */}
-        <section className="space-y-2.5 pb-2">
-          <div className="flex items-center gap-2">
-            <Sliders className="h-3.5 w-3.5" style={{ color: "var(--eco-primary)" }} />
-            <h3 className="font-mono text-xs font-semibold uppercase tracking-wider opacity-90">
-              Плотность и размытие
-            </h3>
-          </div>
+            {/* Player Transport Bar */}
+            <div className="glass-subtle flex flex-wrap items-center justify-between gap-3 p-3.5 font-mono text-xs">
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] uppercase opacity-55">
+                  Сейчас выбрано:
+                </div>
+                <div className="truncate text-sm font-bold">
+                  {radioState.stationId === "local-music" && radioState.currentTrack
+                    ? `${radioState.currentTrack.artist} — ${radioState.currentTrack.title}`
+                    : RADIO_STATIONS.find((s) => s.id === radioState.stationId)
+                        ?.name}
+                </div>
+              </div>
 
-          <div className="grid gap-2.5 sm:grid-cols-3">
-            <div className="glass-subtle p-3">
-              <div className="mb-2 flex justify-between font-mono text-xs">
-                <span className="opacity-75">Непрозрачность окон</span>
-                <span className="tabular-nums">
-                  {Math.round(theme.glassOpacity * 100)}%
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => soundEngine.prevTrack()}
+                  className="border border-white/15 bg-white/[0.04] p-2 hover:border-white/35"
+                  title="Предыдущий трек"
+                >
+                  <SkipBack className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => soundEngine.toggleRadio(radioState.stationId)}
+                  className="inline-flex items-center gap-1.5 border px-4 py-2 font-bold uppercase"
+                  style={{
+                    borderColor: "var(--eco-primary)",
+                    backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
+                  }}
+                >
+                  {radioState.isPlaying ? (
+                    <>
+                      <Pause className="h-3.5 w-3.5" /> Пауза
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3.5 w-3.5" /> Играть
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => soundEngine.nextTrack()}
+                  className="border border-white/15 bg-white/[0.04] p-2 hover:border-white/35"
+                  title="Следующий трек"
+                >
+                  <SkipForward className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => soundEngine.toggleShuffle()}
+                  className={`border p-2 ${
+                    radioState.shuffle
+                      ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300"
+                      : "border-white/15 bg-white/[0.04] opacity-65"
+                  }`}
+                  title="Случайный порядок (Shuffle)"
+                >
+                  <Shuffle className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Volume2 className="h-4 w-4 opacity-75" />
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={radioState.volume}
+                  onChange={(e) => soundEngine.setVolume(Number(e.target.value))}
+                  className="hud-range w-24"
+                />
+                <span className="w-9 text-right tabular-nums">
+                  {Math.round(radioState.volume * 100)}%
                 </span>
               </div>
-              <input
-                type="range"
-                min={0.2}
-                max={0.98}
-                step={0.02}
-                value={theme.glassOpacity}
-                onChange={(e) => setWindowGlassOpacity(Number(e.target.value))}
-                aria-label="Непрозрачность окон"
-                className="hud-range w-full"
-              />
             </div>
 
-            <div className="glass-subtle p-3">
-              <div className="mb-2 flex justify-between font-mono text-xs">
-                <span className="opacity-75">Размытие (Blur)</span>
-                <span className="tabular-nums">{theme.glassBlur}px</span>
-              </div>
-              <input
-                type="range"
-                min={2}
-                max={32}
-                step={1}
-                value={theme.glassBlur}
-                onChange={(e) =>
-                  updateActiveThemeColors({ glassBlur: Number(e.target.value) })
-                }
-                aria-label="Размытие"
-                className="hud-range w-full"
-              />
-            </div>
-
-            <div className="glass-subtle p-3">
-              <div className="mb-2 flex justify-between font-mono text-xs">
-                <span className="opacity-75">Виньетка краёв</span>
-                <span className="tabular-nums">
-                  {Math.round(theme.vignette * 100)}%
+            {/* Search & Tracklist from C:\Users\dakos\Downloads\MediaHuman\Music */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 opacity-50" />
+                  <input
+                    type="text"
+                    value={trackSearch}
+                    onChange={(e) => setTrackSearch(e.target.value)}
+                    placeholder="Поиск по песням и исполнителям в папке MediaHuman..."
+                    className="w-full border border-white/15 bg-black/35 py-1.5 pl-8 pr-3 font-mono text-xs focus:outline-none"
+                  />
+                </div>
+                <span className="font-mono text-xs opacity-65">
+                  Показано: {filteredTracks.length} из {radioState.tracks.length}
                 </span>
               </div>
-              <input
-                type="range"
-                min={0.0}
-                max={0.9}
-                step={0.05}
-                value={theme.vignette}
-                onChange={(e) =>
-                  updateActiveThemeColors({ vignette: Number(e.target.value) })
-                }
-                aria-label="Виньетка"
-                className="hud-range w-full"
-              />
+
+              <div className="max-h-[290px] overflow-y-auto border border-white/10 bg-black/25 divide-y divide-white/5 font-mono text-xs">
+                {filteredTracks.map(({ track, index }) => {
+                  const isCurrent =
+                    radioState.stationId === "local-music" &&
+                    radioState.currentTrackIndex === index;
+                  return (
+                    <button
+                      key={track.id}
+                      type="button"
+                      onClick={() => soundEngine.playLocalTrack(index)}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-white/[0.06] ${
+                        isCurrent ? "font-semibold" : "opacity-80"
+                      }`}
+                      style={
+                        isCurrent
+                          ? {
+                              backgroundColor:
+                                "rgba(var(--eco-primary-rgb), 0.16)",
+                              color: "var(--eco-primary)",
+                            }
+                          : undefined
+                      }
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="w-7 text-[10px] opacity-50 tabular-nums">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="truncate">
+                          <span className="font-semibold">{track.artist}</span>
+                          <span className="mx-1.5 opacity-50">—</span>
+                          <span>{track.title}</span>
+                        </span>
+                      </div>
+                      <span className="shrink-0 text-[10px] opacity-55">
+                        {(track.size / (1024 * 1024)).toFixed(1)} MB
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </section>
+        )}
+
+        {/* =========================================================
+            CATEGORY 05: ОКНА И СТЕКЛО (Габариты, плотность, размытие, поля)
+           ========================================================= */}
+        {activeCategory === "windows" && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+              <div>
+                <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                  05 // Габариты окон, плотность стекла и поля экрана
+                </h2>
+                <p className="mt-0.5 font-mono text-xs opacity-65">
+                  Настройка прозрачности, размытия фона и размеров окон
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetWindowSize}
+                className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.04] px-3 py-1.5 font-mono text-xs"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Сбросить размеры окон</span>
+              </button>
+            </div>
+
+            {/* Glass Opacity, Blur & Vignette */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="glass-subtle p-3.5 font-mono text-xs">
+                <div className="mb-2 flex justify-between">
+                  <span className="opacity-75">Непрозрачность окон</span>
+                  <span className="font-semibold tabular-nums">
+                    {Math.round(theme.glassOpacity * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.2}
+                  max={0.98}
+                  step={0.02}
+                  value={theme.glassOpacity}
+                  onChange={(e) => setWindowGlassOpacity(Number(e.target.value))}
+                  className="hud-range w-full"
+                />
+              </div>
+
+              <div className="glass-subtle p-3.5 font-mono text-xs">
+                <div className="mb-2 flex justify-between">
+                  <span className="opacity-75">Размытие стекла (Blur)</span>
+                  <span className="font-semibold tabular-nums">
+                    {theme.glassBlur}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={28}
+                  step={1}
+                  value={theme.glassBlur}
+                  onChange={(e) =>
+                    updateActiveThemeColors({ glassBlur: Number(e.target.value) })
+                  }
+                  className="hud-range w-full"
+                />
+              </div>
+
+              <div className="glass-subtle p-3.5 font-mono text-xs">
+                <div className="mb-2 flex justify-between">
+                  <span className="opacity-75">Виньетка краёв</span>
+                  <span className="font-semibold tabular-nums">
+                    {Math.round(theme.vignette * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.85}
+                  step={0.05}
+                  value={theme.vignette}
+                  onChange={(e) =>
+                    updateActiveThemeColors({ vignette: Number(e.target.value) })
+                  }
+                  className="hud-range w-full"
+                />
+              </div>
+            </div>
+
+            {/* Window Size Sliders */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="glass-subtle p-3.5 font-mono text-xs">
+                <div className="mb-2 flex justify-between">
+                  <span className="opacity-75">Ширина окна по умолчанию</span>
+                  <span className="font-semibold tabular-nums">
+                    {windowSize.width} px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={520}
+                  max={1600}
+                  step={20}
+                  value={windowSize.width}
+                  onChange={(e) =>
+                    updateWindowSize({
+                      width: Number(e.target.value),
+                      isMaximized: false,
+                    })
+                  }
+                  className="hud-range w-full"
+                />
+              </div>
+
+              <div className="glass-subtle p-3.5 font-mono text-xs">
+                <div className="mb-2 flex justify-between">
+                  <span className="opacity-75">Высота окна по умолчанию</span>
+                  <span className="font-semibold tabular-nums">
+                    {windowSize.height} px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={380}
+                  max={1000}
+                  step={20}
+                  value={windowSize.height}
+                  onChange={(e) =>
+                    updateWindowSize({
+                      height: Number(e.target.value),
+                      isMaximized: false,
+                    })
+                  }
+                  className="hud-range w-full"
+                />
+              </div>
+            </div>
+
+            {/* Screen Edge Frame Margins */}
+            <div className="glass-subtle space-y-3 p-4 font-mono text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Crop
+                    className="h-4 w-4"
+                    style={{ color: "var(--eco-primary)" }}
+                  />
+                  <span className="font-semibold">
+                    Кинематографические рамки по краям экрана
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLinkMargins((v) => !v)}
+                    className={`border px-2.5 py-1 text-[11px] ${
+                      linkMargins
+                        ? "border-white/40 bg-white/15"
+                        : "border-white/15 opacity-65"
+                    }`}
+                  >
+                    Связать 4 стороны
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateFrameMargins({ enabled: !frameMargins.enabled })
+                    }
+                    className={`border px-3 py-1 font-semibold ${
+                      frameMargins.enabled
+                        ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300"
+                        : "border-white/15 bg-white/[0.04] opacity-70"
+                    }`}
+                  >
+                    {frameMargins.enabled ? "ВКЛ" : "ВЫКЛ"}
+                  </button>
+                </div>
+              </div>
+
+              {frameMargins.enabled && (
+                <div className="grid gap-3 pt-2 sm:grid-cols-4">
+                  {(
+                    [
+                      { key: "top", label: "Сверху", max: 160 },
+                      { key: "bottom", label: "Снизу", max: 160 },
+                      { key: "left", label: "Слева", max: 240 },
+                      { key: "right", label: "Справа", max: 240 },
+                    ] as const
+                  ).map((side) => (
+                    <div key={side.key}>
+                      <div className="mb-1 flex justify-between text-[11px]">
+                        <span>{side.label}</span>
+                        <span>{frameMargins[side.key]}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={side.max}
+                        step={4}
+                        value={frameMargins[side.key]}
+                        onChange={(e) =>
+                          handleMarginChange(side.key, Number(e.target.value))
+                        }
+                        className="hud-range w-full"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================
+            CATEGORY 06: СИСТЕМА И БЭКАП (.JSON)
+           ========================================================= */}
+        {activeCategory === "system" && (
+          <div className="space-y-5">
+            <div className="border-b border-white/10 pb-3">
+              <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                06 // Системные виджеты и Резервная копия профиля (.JSON)
+              </h2>
+              <p className="mt-0.5 font-mono text-xs opacity-65">
+                Управление нижним блоком телеметрии и сохранение всех настроек в файл
+              </p>
+            </div>
+
+            <div className="glass-subtle space-y-3 p-4 font-mono text-xs">
+              <div className="font-semibold">Режим нижнего виджета телеметрии:</div>
+              <div className="flex flex-wrap gap-1.5">
+                {ETHER_MODES.map((m) => {
+                  const active = etherConfig.displayMode === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => updateEtherConfig({ displayMode: m.id })}
+                      className={`border px-3 py-1.5 text-xs ${
+                        active
+                          ? "font-semibold"
+                          : "border-white/15 bg-white/[0.03] opacity-75"
+                      }`}
+                      style={
+                        active
+                          ? {
+                              borderColor: "var(--eco-primary)",
+                              backgroundColor:
+                                "rgba(var(--eco-primary-rgb), 0.16)",
+                              color: "var(--eco-primary)",
+                            }
+                          : undefined
+                      }
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="glass-subtle flex flex-wrap items-center justify-between gap-4 p-4 font-mono text-xs">
+              <div>
+                <div className="text-sm font-bold">
+                  Полное резервное копирование профиля ОС (.JSON)
+                </div>
+                <div className="mt-0.5 text-[11px] opacity-65">
+                  Экспортирует или восстанавливает все заметки, темы, открытые сайты, 3D-настройки и конфигурацию окон
+                </div>
+                {backupStatus && (
+                  <div className="mt-1.5 text-xs font-semibold text-emerald-400">
+                    {backupStatus}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportProfileJson();
+                    setBackupStatus("✓ Профиль экспортирован в .JSON файл");
+                  }}
+                  className="inline-flex items-center gap-1.5 border px-3.5 py-2 text-xs font-semibold"
+                  style={{
+                    borderColor: "var(--eco-primary)",
+                    backgroundColor: "rgba(var(--eco-primary-rgb), 0.16)",
+                    color: "var(--eco-primary)",
+                  }}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Экспорт .JSON</span>
+                </button>
+
+                <input
+                  ref={backupInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const text = await file.text();
+                    const ok = importProfileJson(text);
+                    setBackupStatus(
+                      ok
+                        ? "✓ Профиль успешно импортирован!"
+                        : "✕ Ошибка чтения файла резервной копии"
+                    );
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => backupInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.04] px-3.5 py-2 text-xs hover:border-white/35"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>Импорт .JSON</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

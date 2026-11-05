@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <EcosystemProvider>
       <BackgroundVideo />
-      <main className="relative min-h-[100svh]">
+      <main className="relative min-h-[var(--bg-video-height,100svh)] w-full">
         <EcosystemShell />
       </main>
     </EcosystemProvider>

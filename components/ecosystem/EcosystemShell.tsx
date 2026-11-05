@@ -1,28 +1,39 @@
 "use client";
 
 import {
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  Command,
   FileText,
   Globe,
   Layers,
   Newspaper,
   Palette,
-  Plus,
   Sliders,
+  Terminal,
   Trash2,
-  X,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
-import ParticleRipple from "../ui/ParticleRipple";
+import { useEffect, useState } from "react";
+import { soundEngine } from "@/utils/soundEngine";
+import HologramCore from "../ui/HologramCore";
+import AiAssistantPanel from "./AiAssistantPanel";
+import CommandPalette from "./CommandPalette";
 import DesktopWindow from "./DesktopWindow";
-import { useEcosystem } from "./EcosystemContext";
+import DraggableAddSiteWidget from "./DraggableAddSiteWidget";
+import DraggableTelemetryWidget from "./DraggableTelemetryWidget";
+import { useEcosystem, type WorkspaceId } from "./EcosystemContext";
 import NewsPanel from "./NewsPanel";
 import NotesPanel from "./NotesPanel";
 import SettingsPanel from "./SettingsPanel";
 import SiteWindowPanel from "./SiteWindowPanel";
+import TerminalPanel from "./TerminalPanel";
 
 const BUILTIN_ICONS: Record<string, typeof Newspaper> = {
   news: Newspaper,
   notes: FileText,
+  ai: Bot,
+  terminal: Terminal,
   settings: Sliders,
 };
 
@@ -32,27 +43,24 @@ export default function EcosystemShell() {
     activeWindowId,
     toggleWindow,
     closeAllWindows,
-    addSiteWindow,
     removeSiteWindow,
+    activeWorkspace,
+    setActiveWorkspace,
+    commandPaletteOpen,
+    setCommandPaletteOpen,
+    hologramEnabled,
     surfaceMode,
     setSurfaceMode,
     themes,
     activeThemeId,
     selectTheme,
-    etherConfig,
-    news,
-    notes,
   } = useEcosystem();
 
   const [clock, setClock] = useState<{ time: string; date: string }>({
     time: "",
     date: "",
   });
-
-  // Bottom-Right "Add Website" popover state
-  const [addSiteOpen, setAddSiteOpen] = useState(false);
-  const [siteUrlInput, setSiteUrlInput] = useState("");
-  const [siteTitleInput, setSiteTitleInput] = useState("");
+  const [railCollapsed, setRailCollapsed] = useState(false);
 
   useEffect(() => {
     const update = () => {
@@ -74,58 +82,163 @@ export default function EcosystemShell() {
     return () => window.clearInterval(id);
   }, []);
 
-  const handleAddSiteSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!siteUrlInput.trim()) return;
-    addSiteWindow(siteUrlInput, siteTitleInput);
-    setSiteUrlInput("");
-    setSiteTitleInput("");
-    setAddSiteOpen(false);
-  };
+  const visibleWindows = windows.filter(
+    (w) =>
+      w.isOpen &&
+      (activeWorkspace === "all" ||
+        !w.workspace ||
+        w.workspace === activeWorkspace)
+  );
 
-  const anyWindowOpen = windows.some((w) => w.isOpen);
+  const anyWindowOpen = visibleWindows.length > 0;
+  const anyWindowMaximized = visibleWindows.some((w) => w.isMaximized);
+  const anyWindowOverTopBar = visibleWindows.some(
+    (w) => !w.isMaximized && w.y < 58
+  );
+
+  // Hide top bar if a window is maximized or dragged directly over the top header bar
+  const hideTopHeader = anyWindowMaximized || anyWindowOverTopBar;
 
   return (
-    <div className="relative flex h-[100svh] w-full flex-col justify-between overflow-hidden px-4 py-4 sm:px-6 sm:py-5">
-      {/* TOP BAR */}
-      <header className="pointer-events-none relative z-[9980] flex shrink-0 flex-wrap items-center justify-between gap-3">
-        {/* Top-Left Brand Mark (Closes all windows to show clean desktop) */}
-        <button
-          type="button"
-          onClick={closeAllWindows}
-          title="Свернуть все окна (Чистый экран)"
-          className="glass pointer-events-auto group relative inline-flex items-center gap-3 rounded-none px-3.5 py-2 text-left transition-colors hover:border-white/35"
-        >
-          {/* Corner notches */}
-          <span
-            className="pointer-events-none absolute -left-[1px] -top-[1px] h-1.5 w-1.5 border-l border-t"
-            style={{ borderColor: "var(--eco-primary)" }}
-          />
-          <span
-            className="pointer-events-none absolute -bottom-[1px] -right-[1px] h-1.5 w-1.5 border-b border-r"
-            style={{ borderColor: "var(--eco-primary)" }}
-          />
+    <div
+      className="relative w-full"
+      style={{ minHeight: "var(--bg-video-height, 100vh)" }}
+    >
+      {/* COMMAND PALETTE MODAL (CTRL+K) */}
+      <CommandPalette />
 
-          <span
-            className="grid h-5 w-5 place-items-center rounded-none border text-[10px] font-mono font-bold"
-            style={{
-              borderColor: "var(--eco-primary)",
-              backgroundColor: "rgba(var(--eco-primary-rgb), 0.12)",
-              color: "var(--eco-primary)",
-            }}
+      {/* TOP BAR (STANDS IN PLACE ON THE PAGE; HIDES WHEN WINDOW IS MAXIMIZED SO IT NEVER COVERS WINDOW BUTTONS) */}
+      <header
+        className={`pointer-events-none absolute left-4 right-4 top-4 z-[20] flex shrink-0 flex-wrap items-center justify-between gap-2.5 transition-opacity duration-200 sm:left-6 sm:right-6 sm:top-5 ${
+          hideTopHeader
+            ? "pointer-events-none invisible opacity-0"
+            : "opacity-100"
+        }`}
+      >
+        {/* Top-Left Brand Mark + Virtual Workspaces Switcher */}
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={closeAllWindows}
+            title="Свернуть все окна (Чистый экран)"
+            className="glass group relative inline-flex items-center gap-3 rounded-none px-3.5 py-2 text-left transition-colors hover:border-white/35"
           >
-            AE
-          </span>
-          <span className="font-mono text-xs font-semibold tracking-[0.24em]">
-            AETHVORYN
-          </span>
-          <span className="font-mono text-[9px] uppercase tracking-widest opacity-40">
-            [OS]
-          </span>
-        </button>
+            <span
+              className="pointer-events-none absolute -left-[1px] -top-[1px] h-1.5 w-1.5 border-l border-t"
+              style={{ borderColor: "var(--eco-primary)" }}
+            />
+            <span
+              className="pointer-events-none absolute -bottom-[1px] -right-[1px] h-1.5 w-1.5 border-b border-r"
+              style={{ borderColor: "var(--eco-primary)" }}
+            />
+
+            <span
+              className="grid h-5 w-5 place-items-center rounded-none border text-[10px] font-mono font-bold"
+              style={{
+                borderColor: "var(--eco-primary)",
+                backgroundColor: "rgba(var(--eco-primary-rgb), 0.12)",
+                color: "var(--eco-primary)",
+              }}
+            >
+              AE
+            </span>
+            <span className="font-mono text-xs font-semibold tracking-[0.24em]">
+              AETHVORYN
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-widest opacity-40">
+              [OS]
+            </span>
+          </button>
+
+          {/* Virtual Workspaces Switcher (WS: ВСЕ / 01 / 02 / 03) */}
+          <div
+            className="glass hidden items-center rounded-none p-0.5 font-mono text-[10px] md:flex"
+            role="group"
+            aria-label="Виртуальные рабочие столы"
+          >
+            <span
+              className="px-2 uppercase tracking-wider opacity-45"
+              title="Виртуальные рабочие столы (группировка окон)"
+            >
+              WS:
+            </span>
+            {(
+              [
+                {
+                  id: "all",
+                  label: "ВСЕ",
+                  tip: "Показать все открытые окна сразу",
+                },
+                {
+                  id: "1",
+                  label: "01",
+                  tip: "Рабочий стол 01: Новости и ИИ-Ассистент",
+                },
+                {
+                  id: "2",
+                  label: "02",
+                  tip: "Рабочий стол 02: Блокнот и Терминал",
+                },
+                {
+                  id: "3",
+                  label: "03",
+                  tip: "Рабочий стол 03: Настройки и добавленные сайты",
+                },
+              ] as { id: WorkspaceId; label: string; tip: string }[]
+            ).map((ws) => {
+              const active = activeWorkspace === ws.id;
+              return (
+                <button
+                  key={ws.id}
+                  type="button"
+                  title={ws.tip}
+                  onClick={() => {
+                    soundEngine.playClick();
+                    setActiveWorkspace(ws.id);
+                  }}
+                  className={`rounded-none px-2 py-1 transition-colors ${
+                    active
+                      ? "font-bold text-white"
+                      : "opacity-60 hover:opacity-100"
+                  }`}
+                  style={
+                    active
+                      ? {
+                          backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
+                          border: "1px solid rgba(var(--eco-primary-rgb), 0.5)",
+                        }
+                      : { border: "1px solid transparent" }
+                  }
+                >
+                  {ws.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Top-Right Controls */}
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          {/* Command Palette Trigger (Ctrl+K) */}
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playClick();
+              setCommandPaletteOpen(!commandPaletteOpen);
+            }}
+            title="Быстрый поиск, калькулятор и палитра команд (Ctrl+K)"
+            className="glass inline-flex items-center gap-1.5 rounded-none px-2.5 py-1.5 font-mono text-xs transition-colors hover:border-white/35"
+          >
+            <Command
+              className="h-3.5 w-3.5"
+              style={{ color: "var(--eco-primary)" }}
+            />
+            <span className="hidden sm:inline">Команды</span>
+            <kbd className="border border-white/15 bg-black/50 px-1 py-0.5 text-[9px] opacity-65">
+              Ctrl+K
+            </kbd>
+          </button>
+
           {/* Surface Mode Switcher */}
           <div
             className="glass flex items-center rounded-none p-0.5"
@@ -138,7 +251,10 @@ export default function EcosystemShell() {
             />
             <button
               type="button"
-              onClick={() => setSurfaceMode("transparent")}
+              onClick={() => {
+                soundEngine.playClick();
+                setSurfaceMode("transparent");
+              }}
               className={`rounded-none px-2.5 py-1 text-xs font-medium transition-colors ${
                 surfaceMode === "transparent"
                   ? "font-semibold"
@@ -158,7 +274,10 @@ export default function EcosystemShell() {
             </button>
             <button
               type="button"
-              onClick={() => setSurfaceMode("solid")}
+              onClick={() => {
+                soundEngine.playClick();
+                setSurfaceMode("solid");
+              }}
               className={`rounded-none px-2.5 py-1 text-xs font-medium transition-colors ${
                 surfaceMode === "solid"
                   ? "font-semibold"
@@ -174,28 +293,28 @@ export default function EcosystemShell() {
                   : { border: "1px solid transparent" }
               }
             >
-              Плотный
+              Сплошной
             </button>
           </div>
 
-          {/* Theme Switcher */}
-          <div className="glass flex items-center gap-2 rounded-none px-3 py-1.5">
+          {/* Quick Theme Selector */}
+          <div className="glass relative flex items-center rounded-none px-2.5 py-1">
             <Palette
-              className="h-3.5 w-3.5 shrink-0 opacity-75"
+              className="mr-1.5 h-3.5 w-3.5 opacity-60"
               style={{ color: "var(--eco-primary)" }}
             />
             <select
-              aria-label="Выбор темы"
+              aria-label="Выбор цветовой схемы"
               value={activeThemeId}
               onChange={(e) => selectTheme(e.target.value)}
-              className="cursor-pointer rounded-none bg-transparent pr-1 font-mono text-xs font-medium focus:outline-none"
+              className="cursor-pointer bg-transparent pr-2 text-xs font-medium focus:outline-none"
               style={{ color: "var(--eco-text)" }}
             >
               {themes.map((t) => (
                 <option
                   key={t.id}
                   value={t.id}
-                  className="bg-slate-950 text-slate-100"
+                  className="bg-[#0b0e14] text-white"
                 >
                   {t.name}
                 </option>
@@ -205,15 +324,18 @@ export default function EcosystemShell() {
         </div>
       </header>
 
+      {/* 3D INTERACTIVE HOLOGRAM OBJECT (DRAGGABLE WITH LEFT MOUSE BUTTON) */}
+      {hologramEnabled && !anyWindowMaximized && <HologramCore />}
+
       {/* CENTER WATERMARK WHEN NO WINDOWS ARE OPEN */}
       {!anyWindowOpen && (
-        <div className="pointer-events-none fixed inset-0 z-0 flex select-none items-center justify-center text-center">
-          <div className="inline-flex flex-col items-center gap-2">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex h-[100svh] select-none items-center justify-center text-center">
+          <div className="relative z-10 inline-flex flex-col items-center gap-2">
             <div className="h-[1px] w-20 bg-white/25" />
             <h1 className="text-shadow-crisp font-mono text-3xl font-semibold tracking-[0.32em] sm:text-5xl">
               <span className="text-gradient-amber">AETHVORYN</span>
             </h1>
-            <span className="font-mono text-[10px] uppercase tracking-[0.4em] opacity-45">
+            <span className="font-mono text-[10px] uppercase tracking-[0.4em] opacity-55">
               DIGITAL WORKSPACE ARCHITECTURE
             </span>
             <div className="h-[1px] w-20 bg-white/25" />
@@ -221,25 +343,63 @@ export default function EcosystemShell() {
         </div>
       )}
 
-      {/* MULTI-WINDOW DESKTOP LAYER (FREE FLOATING, OVERLAPPING, FULL-SCREEN CAPABLE) */}
-      {windows.map((win) => {
-        if (!win.isOpen) return null;
+      {/* MULTI-WINDOW DESKTOP LAYER (STANDS IN PLACE ON PAGE; MAXIMIZED WINDOWS TAKE FULL VIEWPORT) */}
+      {visibleWindows.map((win) => {
         const isActive = win.id === activeWindowId;
         return (
           <DesktopWindow key={win.id} win={win} isActive={isActive}>
             {win.id === "news" && <NewsPanel />}
             {win.id === "notes" && <NotesPanel />}
+            {win.id === "ai" && <AiAssistantPanel />}
+            {win.id === "terminal" && <TerminalPanel />}
             {win.id === "settings" && <SettingsPanel />}
             {win.kind === "site" && <SiteWindowPanel win={win} />}
           </DesktopWindow>
         );
       })}
 
-      {/* RIGHT VERTICAL COMMAND RAIL (МЕНЮ СПРАВА: СИСТЕМНЫЕ ОКНА + ДОБАВЛЕННЫЕ САЙТЫ) */}
+      {/* RIGHT VERTICAL COMMAND RAIL (ПРИКРЕПЛЕНА К ЭКРАНУ: СИСТЕМНЫЕ ОКНА + ДОБАВЛЕННЫЕ САЙТЫ) */}
       <nav
         aria-label="Меню окон и сайтов"
-        className="glass fixed right-4 top-1/2 z-[9985] flex max-h-[72vh] -translate-y-1/2 flex-col items-stretch gap-1.5 overflow-y-auto rounded-none p-1.5 shadow-2xl sm:right-6"
+        className="glass fixed right-3 top-1/2 z-[9990] flex max-h-[82vh] -translate-y-1/2 flex-col items-stretch gap-1.5 overflow-y-auto rounded-none p-1.5 shadow-2xl sm:right-5"
       >
+        {/* Top Rail Collapse / Quick Command Header */}
+        <div className="flex items-center justify-between gap-1 border-b border-white/10 pb-1">
+          {!railCollapsed && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setCommandPaletteOpen(true);
+              }}
+              title="Палитра команд (Ctrl+K)"
+              className="flex flex-1 items-center justify-center gap-1 border border-white/10 bg-white/[0.04] px-1.5 py-1 font-mono text-[9px] uppercase tracking-wider opacity-75 hover:border-white/30 hover:opacity-100"
+            >
+              <Command className="h-2.5 w-2.5" style={{ color: "var(--eco-primary)" }} />
+              <span>⌘K</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playClick();
+              setRailCollapsed((v) => !v);
+            }}
+            title={
+              railCollapsed
+                ? "Развернуть боковое меню"
+                : "Компактный режим меню (только иконки)"
+            }
+            className="flex items-center justify-center border border-white/10 bg-white/[0.04] p-1 opacity-70 hover:border-white/30 hover:opacity-100"
+          >
+            {railCollapsed ? (
+              <ChevronLeft className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </button>
+        </div>
+
         {windows.map((win, index) => {
           const Icon =
             win.kind === "builtin"
@@ -252,70 +412,77 @@ export default function EcosystemShell() {
             (index === 0 || windows[index - 1]?.kind === "builtin");
 
           return (
-            <div key={win.id} className="flex flex-col">
+            <div key={win.id} className=" flex flex-col gap-1.5">
               {isFirstSite && (
-                <div className="my-1 flex items-center gap-1.5 px-2">
-                  <div className="h-[1px] flex-1 bg-white/15" />
-                  <span className="font-mono text-[9px] uppercase tracking-widest opacity-40">
-                    Сайты
-                  </span>
-                  <div className="h-[1px] flex-1 bg-white/15" />
+                <div className="my-0.5 border-t border-white/15 pt-1 text-center font-mono text-[8px] uppercase tracking-widest opacity-40">
+                  {railCollapsed ? "•••" : "Сайты"}
                 </div>
               )}
 
-              <div className="group/navitem relative flex items-center">
+              <div className="group relative flex items-center">
                 <button
                   type="button"
-                  onClick={() => toggleWindow(win.id)}
-                  title={
-                    isOpen
-                      ? `Закрыть окно «${win.title}»`
-                      : `Открыть окно «${win.title}»`
-                  }
-                  className={`relative flex w-full items-center gap-2.5 rounded-none px-3.5 py-2.5 text-left text-xs font-medium transition-colors sm:text-[13px] ${
-                    win.kind === "site" ? "pr-7" : ""
+                  onClick={() => {
+                    if (
+                      activeWorkspace !== "all" &&
+                      win.workspace &&
+                      win.workspace !== activeWorkspace
+                    ) {
+                      setActiveWorkspace("all");
+                    }
+                    toggleWindow(win.id);
+                  }}
+                  title={`${win.title} (${isOpen ? "Открыто" : "Закрыто"})`}
+                  className={`relative flex w-full flex-col items-center gap-1 rounded-none px-2.5 py-2 font-mono transition-all ${
+                    railCollapsed ? "min-w-[40px]" : "min-w-[60px]"
                   } ${
                     isOpen
-                      ? "font-semibold"
-                      : "opacity-70 hover:bg-white/[0.05] hover:opacity-100"
+                      ? "opacity-100"
+                      : "opacity-60 hover:bg-white/[0.04] hover:opacity-100"
                   }`}
                   style={
-                    isOpen
+                    isFocused
                       ? {
-                          backgroundColor: isFocused
-                            ? "rgba(var(--eco-primary-rgb), 0.22)"
-                            : "rgba(var(--eco-primary-rgb), 0.10)",
-                          border: isFocused
-                            ? "1px solid rgba(var(--eco-primary-rgb), 0.75)"
-                            : "1px solid rgba(var(--eco-primary-rgb), 0.35)",
+                          backgroundColor: "rgba(var(--eco-primary-rgb), 0.22)",
+                          border: "1px solid var(--eco-primary)",
+                          color: "var(--eco-text)",
+                        }
+                      : isOpen
+                      ? {
+                          backgroundColor: "rgba(var(--eco-primary-rgb), 0.09)",
+                          border: "1px solid rgba(var(--eco-primary-rgb), 0.35)",
+                          color: "var(--eco-text)",
                         }
                       : { border: "1px solid transparent" }
                   }
                 >
-                  {/* Active state left bar */}
+                  {/* Open state indicator dot */}
                   {isOpen && (
                     <span
-                      className="absolute bottom-1 left-0 top-1 w-[2px]"
-                      style={{
-                        backgroundColor: "var(--eco-primary)",
-                        opacity: isFocused ? 1 : 0.5,
-                      }}
+                      className="absolute left-1 top-1 h-1.5 w-1.5"
+                      style={{ backgroundColor: "var(--eco-primary)" }}
                     />
                   )}
 
-                  <span className="hidden font-mono text-[10px] opacity-45 lg:inline">
-                    {win.code}
-                  </span>
+                  {!railCollapsed && (
+                    <span className="text-[9px] tracking-widest opacity-45">
+                      {win.code}
+                    </span>
+                  )}
                   <Icon
-                    className="relative h-4 w-4 shrink-0"
-                    style={isOpen ? { color: "var(--eco-primary)" } : undefined}
+                    className="h-4 w-4"
+                    style={{
+                      color: isOpen ? "var(--eco-primary)" : "currentColor",
+                    }}
                   />
-                  <span className="relative max-w-[120px] truncate">
-                    {win.title}
-                  </span>
+                  {!railCollapsed && (
+                    <span className="max-w-[68px] truncate text-[9px] font-medium uppercase tracking-wider">
+                      {win.title}
+                    </span>
+                  )}
                 </button>
 
-                {/* Delete custom site button on hover */}
+                {/* Delete custom website button on hover */}
                 {win.kind === "site" && (
                   <button
                     type="button"
@@ -324,9 +491,9 @@ export default function EcosystemShell() {
                       removeSiteWindow(win.id);
                     }}
                     title={`Удалить сайт «${win.title}» из меню`}
-                    className="absolute right-1.5 p-1 opacity-0 transition-opacity hover:text-rose-400 group-hover/navitem:opacity-75"
+                    className=" absolute -left-2 -top-1 hidden h-4 w-4 items-center justify-center border border-rose-500/50 bg-black text-rose-400 group-hover:flex hover:bg-rose-500 hover:text-white"
                   >
-                    <Trash2 className="h-3 w-3" />
+                    <Trash2 className="h-2.5 w-2.5" />
                   </button>
                 )}
               </div>
@@ -335,223 +502,12 @@ export default function EcosystemShell() {
         })}
       </nav>
 
-      {/* BOTTOM ROW: Left Telemetry Bar + Right "Add Website" Button */}
-      <footer className="pointer-events-none relative z-[9980] mt-auto flex shrink-0 items-end justify-between gap-4">
-        {/* Bottom-Left Telemetry Widget */}
-        {etherConfig.displayMode !== "hidden" ? (
-          <div
-            data-ripple-host
-            className="glass pointer-events-auto relative h-16 w-full max-w-md overflow-hidden rounded-none px-4 py-2.5 shadow-xl"
-          >
-            {/* Corner tick marks */}
-            <span
-              className="pointer-events-none absolute left-0 top-0 h-1.5 w-1.5 border-l border-t"
-              style={{ borderColor: "var(--eco-primary)" }}
-            />
-            <span
-              className="pointer-events-none absolute right-0 top-0 h-1.5 w-1.5 border-r border-t"
-              style={{ borderColor: "var(--eco-primary)" }}
-            />
-
-            <div className="absolute inset-0 opacity-70">
-              <ParticleRipple />
-            </div>
-
-            {etherConfig.displayMode === "clock" && (
-              <div className="pointer-events-none relative z-10 flex h-full items-center justify-between">
-                <div className="flex items-baseline gap-2.5">
-                  <span className="font-mono text-xl font-semibold tabular-nums tracking-wider sm:text-2xl">
-                    {clock.time || "—:—"}
-                  </span>
-                  <span className="font-mono text-[10px] uppercase tracking-widest opacity-45">
-                    UTC_LOC
-                  </span>
-                </div>
-                <span className="font-mono text-xs tabular-nums tracking-widest opacity-70">
-                  {clock.date}
-                </span>
-              </div>
-            )}
-
-            {etherConfig.displayMode === "stats" && (
-              <div className="pointer-events-none relative z-10 flex h-full items-center justify-between font-mono text-xs">
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className="text-base font-semibold tabular-nums"
-                    style={{ color: "var(--eco-primary)" }}
-                  >
-                    {news.length}
-                  </span>
-                  <span className="text-[11px] uppercase tracking-wider opacity-65">
-                    ПУБЛИКАЦИЙ
-                  </span>
-                </div>
-                <div className="h-4 w-[1px] bg-white/10" />
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className="text-base font-semibold tabular-nums"
-                    style={{ color: "var(--eco-primary)" }}
-                  >
-                    {notes.length}
-                  </span>
-                  <span className="text-[11px] uppercase tracking-wider opacity-65">
-                    ЗАМЕТОК
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {etherConfig.displayMode === "custom" && (
-              <div className="pointer-events-none relative z-10 flex h-full flex-col justify-center">
-                <p className="truncate font-mono text-xs font-semibold uppercase tracking-wider">
-                  {etherConfig.customTitle}
-                </p>
-                {etherConfig.customSubtitle && (
-                  <p className="truncate font-mono text-[11px] opacity-65">
-                    {etherConfig.customSubtitle}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div />
-        )}
-
-        {/* BOTTOM-RIGHT: ADD WEBSITE BUTTON & POPOVER */}
-        <div className="pointer-events-auto relative flex flex-col items-end">
-          {addSiteOpen && (
-            <form
-              onSubmit={handleAddSiteSubmit}
-              className="glass mb-2.5 w-80 rounded-none border p-3.5 shadow-2xl sm:w-96"
-              style={{
-                borderColor: "rgba(var(--eco-primary-rgb), 0.55)",
-              }}
-            >
-              {/* HUD Corner brackets */}
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -left-[1px] -top-[1px] h-2.5 w-2.5 border-l-2 border-t-2"
-                style={{ borderColor: "var(--eco-primary)" }}
-              />
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -right-[1px] -top-[1px] h-2.5 w-2.5 border-r-2 border-t-2"
-                style={{ borderColor: "var(--eco-primary)" }}
-              />
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -bottom-[1px] -left-[1px] h-2.5 w-2.5 border-b-2 border-l-2"
-                style={{ borderColor: "var(--eco-primary)" }}
-              />
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -bottom-[1px] -right-[1px] h-2.5 w-2.5 border-b-2 border-r-2"
-                style={{ borderColor: "var(--eco-primary)" }}
-              />
-
-              <div className="mb-3 flex items-center justify-between border-b border-white/10 pb-2">
-                <div className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider">
-                  <Globe
-                    className="h-3.5 w-3.5"
-                    style={{ color: "var(--eco-primary)" }}
-                  />
-                  <span>Добавить сайт в меню</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAddSiteOpen(false)}
-                  className="p-0.5 opacity-60 hover:opacity-100"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              <div className="space-y-2.5 font-mono text-xs">
-                <div>
-                  <label className="mb-1 block text-[10px] uppercase tracking-wider opacity-65">
-                    Ссылка на сайт (URL) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    value={siteUrlInput}
-                    onChange={(e) => setSiteUrlInput(e.target.value)}
-                    placeholder="https://example.com или wikipedia.org"
-                    className="w-full rounded-none border border-white/15 bg-black/60 px-2.5 py-2 font-mono text-xs text-white focus:border-white/40 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-[10px] uppercase tracking-wider opacity-65">
-                    Название в меню (необязательно)
-                  </label>
-                  <input
-                    type="text"
-                    value={siteTitleInput}
-                    onChange={(e) => setSiteTitleInput(e.target.value)}
-                    placeholder="Автоматически по домену"
-                    className="w-full rounded-none border border-white/15 bg-black/60 px-2.5 py-1.5 font-mono text-xs text-white focus:border-white/40 focus:outline-none"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setAddSiteOpen(false)}
-                    className="rounded-none border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] opacity-75 hover:opacity-100"
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-1.5 rounded-none border px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors"
-                    style={{
-                      backgroundColor: "rgba(var(--eco-primary-rgb), 0.22)",
-                      borderColor: "var(--eco-primary)",
-                      color: "var(--eco-text)",
-                    }}
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Добавить
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setAddSiteOpen((v) => !v)}
-            title="Добавить новый сайт в правое меню"
-            className="glass group relative inline-flex items-center gap-2.5 rounded-none px-4 py-2.5 font-mono text-xs font-semibold uppercase tracking-wider shadow-xl transition-colors hover:border-white/40"
-            style={
-              addSiteOpen
-                ? {
-                    backgroundColor: "rgba(var(--eco-primary-rgb), 0.2)",
-                    borderColor: "var(--eco-primary)",
-                  }
-                : undefined
-            }
-          >
-            {/* Corner ticks */}
-            <span
-              className="pointer-events-none absolute -left-[1px] -top-[1px] h-1.5 w-1.5 border-l border-t"
-              style={{ borderColor: "var(--eco-primary)" }}
-            />
-            <span
-              className="pointer-events-none absolute -bottom-[1px] -right-[1px] h-1.5 w-1.5 border-b border-r"
-              style={{ borderColor: "var(--eco-primary)" }}
-            />
-
-            <Plus
-              className="h-3.5 w-3.5 transition-transform group-hover:rotate-90"
-              style={{ color: "var(--eco-primary)" }}
-            />
-            <span>Добавить сайт</span>
-          </button>
-        </div>
-      </footer>
+      {/* DRAGGABLE HUD WIDGETS (STAND IN PLACE ON THE PAGE; HIDDEN WHEN A WINDOW IS MAXIMIZED) */}
+      <DraggableTelemetryWidget
+        clock={clock}
+        hiddenByMaximize={anyWindowMaximized}
+      />
+      <DraggableAddSiteWidget hiddenByMaximize={anyWindowMaximized} />
     </div>
   );
 }
